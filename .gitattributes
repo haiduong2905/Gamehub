@@ -1,0 +1,20 @@
+# Chuẩn hoá xuống dòng: repo luôn lưu LF, máy Windows vẫn checkout ra CRLF.
+#
+# Không có file này, mỗi lần người dùng Windows và người dùng macOS/Linux đụng
+# vào cùng một file sẽ sinh ra diff giả toàn bộ file.
+* text=auto eol=lf
+
+# File nhị phân: tuyệt đối không đụng vào nội dung.
+*.png binary
+*.jpg binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.jar binary
+*.keystore binary
+*.jks binary
+
+# Script của Windows phải giữ CRLF mới chạy được.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf

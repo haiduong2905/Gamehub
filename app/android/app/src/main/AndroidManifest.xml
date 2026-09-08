@@ -1,0 +1,76 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      Quyen mang cua Game Hub.
+
+      Day la nguyen nhan so mot khien mot app LAN "khong chay" tren may nguoi
+      dung, va trieu chung rat kho doan: khong thay phong nao, hoac ket noi
+      treo den khi timeout, chu khong he co thong bao loi.
+    -->
+
+    <!-- Mo socket. Van can du app khong he dung Internet. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!--
+      mDNS chay tren multicast. NsdManager cua he thong tu giu multicast lock,
+      nhung khai bao san de khong phu thuoc vao chi tiet trien khai cua no.
+    -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
+    <!--
+      Android 13 (API 33) tro len: bat buoc cho NsdManager.
+      neverForLocation de khoi phai xin them quyen vi tri - app nay khong he
+      quan tam nguoi dung dang o dau.
+      Day la RUNTIME permission: xem LocalNetworkPermission.
+    -->
+    <uses-permission
+        android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation"
+        tools:targetApi="33" />
+
+    <!--
+      Android 16 (API 36) gioi thieu, Android 17 (API 37) BAT BUOC.
+      Thieu quyen nay tren Android 17: TCP toi dia chi LAN bi timeout va UDP
+      tra ve EPERM - app se im lang khong chay.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
+
+    <application
+        android:label="Game Hub"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <!-- Don't delete the meta-data below.
+             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+    </queries>
+</manifest>

@@ -1,0 +1,19 @@
+name: game_tictactoe
+description: Co caro 3x3 - game dau tien cam vao Game Hub.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+  flutter: ">=3.27.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  platform_core:
+    path: ../platform_core
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0

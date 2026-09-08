@@ -1,0 +1,30 @@
+name: game_hub
+description: Game Hub - choi doi khang qua Wi-Fi/LAN, khong can Internet.
+publish_to: none
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  platform_core:
+    path: ../packages/platform_core
+  game_tictactoe:
+    path: ../packages/game_tictactoe
+
+  flutter_riverpod: ^2.6.1
+  bonsoir: ^5.1.11
+  shared_preferences: ^2.3.3
+  wakelock_plus: ^1.2.8
+  permission_handler: ^11.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

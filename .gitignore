@@ -1,0 +1,32 @@
+# Kết quả build. app/build hiện đã ~2.9GB — tuyệt đối không đưa vào git.
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+*.apk
+*.aab
+
+# Phụ thuộc đã khoá bằng pubspec.yaml; lockfile của app thì nên giữ, còn của
+# package thư viện thì không.
+packages/*/pubspec.lock
+
+# Cấu hình máy cá nhân — chứa đường dẫn SDK riêng của từng người.
+app/android/local.properties
+app/android/.gradle/
+app/android/key.properties
+*.keystore
+*.jks
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+
+# Hệ điều hành
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Log tạm khi build
+*.log

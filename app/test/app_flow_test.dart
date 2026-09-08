@@ -1,0 +1,284 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:game_hub/state/identity.dart';
+import 'package:game_hub/state/network_providers.dart';
+import 'package:game_hub/state/session.dart';
+import 'package:game_hub/theme.dart';
+import 'package:game_hub/ui/home_screen.dart';
+import 'package:game_hub/ui/room_screen.dart';
+import 'package:game_tictactoe/game_tictactoe.dart';
+import 'package:platform_core/platform_core.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/fake_network.dart';
+
+/// Dựng cả app trên LoopbackTransport.
+///
+/// Toàn bộ luồng tạo phòng → vào phòng → sẵn sàng → chơi → thắng được kiểm tra
+/// ở đây, trên chính UI thật, mà không cần thiết bị, không cần quyền, không
+/// cần Wi-Fi. Đó là lý do LoopbackTransport tồn tại.
+ProviderContainer _container(
+  LoopbackNetwork network, {
+  required String playerId,
+  required String nickname,
+}) {
+  return ProviderContainer(
+    overrides: [
+      identityProvider.overrideWith(
+        () => FakeIdentity(playerId: playerId, nickname: nickname),
+      ),
+      hostTransportFactoryProvider
+          .overrideWithValue(() => LoopbackHostTransport(network)),
+      clientTransportProvider
+          .overrideWithValue(LoopbackClientTransport(network)),
+      discoveryFactoryProvider
+          .overrideWithValue(() => LoopbackDiscovery(network)),
+      localNetworkPermissionProvider.overrideWithValue(
+        const AlwaysGrantedPermission(),
+      ),
+    ],
+  );
+}
+
+/// Nhường event loop vài vòng cho bản tin đang bay trên dây đến nơi.
+///
+/// LocalLink giao tin qua Timer. Trong widget test, Timer chạy trên đồng hồ
+/// giả nên await ở đây sẽ treo vĩnh viễn — vì vậy mọi lệnh gọi settle() bên
+/// trong testWidgets đều phải nằm trong `tester.runAsync`.
+Future<void> settle() async {
+  for (var i = 0; i < 10; i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
+}
+
+void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  group('luồng đầy đủ trên Loopback', () {
+    test('hai người chơi trọn một ván cờ caro qua đúng tầng mạng của app',
+        () async {
+      final network = LoopbackNetwork();
+
+      final hostSide = _container(network, playerId: 'host', nickname: 'Vu');
+      final guestSide = _container(network, playerId: 'guest', nickname: 'Nam');
+      addTearDown(hostSide.dispose);
+      addTearDown(guestSide.dispose);
+
+      await hostSide.read(identityProvider.future);
+      await guestSide.read(identityProvider.future);
+
+      await hostSide.read(sessionProvider.notifier).createRoom(
+            gameId: 'tic-tac-toe',
+            displayName: 'Phong cua Vu',
+          );
+      await settle();
+
+      expect(hostSide.read(sessionProvider).status, SessionStatus.active);
+      expect(hostSide.read(sessionProvider).isHost, isTrue);
+
+      // Khách tìm thấy phòng qua discovery, đúng như trên máy thật.
+      final discovery = LoopbackDiscovery(network);
+      await discovery.startDiscovery(gameId: 'tic-tac-toe');
+      final rooms = await discovery.rooms.first;
+      expect(rooms, hasLength(1));
+      expect(rooms.first.advertisement.displayName, 'Phong cua Vu');
+
+      await guestSide.read(sessionProvider.notifier).joinRoom(
+            rooms.first.address,
+            gameId: 'tic-tac-toe',
+          );
+      await settle();
+
+      expect(guestSide.read(sessionProvider).status, SessionStatus.active);
+      expect(
+        hostSide.read(sessionProvider).client!.room!.players,
+        hasLength(2),
+      );
+
+      hostSide.read(sessionProvider.notifier).setReady(ready: true);
+      guestSide.read(sessionProvider.notifier).setReady(ready: true);
+      await settle();
+      hostSide.read(sessionProvider.notifier).startGame();
+      await settle();
+
+      expect(hostSide.read(sessionProvider).client!.phase, ClientPhase.playing);
+
+      // Host là X và thắng bằng hàng trên cùng.
+      for (final move in [
+        (hostSide, 0),
+        (guestSide, 3),
+        (hostSide, 1),
+        (guestSide, 4),
+        (hostSide, 2),
+      ]) {
+        move.$1.read(sessionProvider.notifier).sendAction({'cell': move.$2});
+        await settle();
+      }
+
+      expect(hostSide.read(sessionProvider).client!.result!.winners, ['host']);
+      expect(
+        guestSide.read(sessionProvider).client!.result!.winners,
+        ['host'],
+        reason: 'hai máy phải nhận cùng một kết quả từ host',
+      );
+
+      final board = const TicTacToeGame()
+          .decodeState(guestSide.read(sessionProvider).client!.gameState!);
+      expect(board.winningLine, [0, 1, 2]);
+
+      await discovery.dispose();
+      await hostSide.read(sessionProvider.notifier).leave();
+      await guestSide.read(sessionProvider.notifier).leave();
+    });
+
+    test('không có quyền mạng nội bộ thì báo lỗi rõ ràng', () async {
+      final network = LoopbackNetwork();
+      final container = ProviderContainer(
+        overrides: [
+          identityProvider.overrideWith(
+            () => FakeIdentity(playerId: 'p1', nickname: 'Vu'),
+          ),
+          hostTransportFactoryProvider
+              .overrideWithValue(() => LoopbackHostTransport(network)),
+          discoveryFactoryProvider
+              .overrideWithValue(() => LoopbackDiscovery(network)),
+          localNetworkPermissionProvider
+              .overrideWithValue(const DeniedPermission()),
+        ],
+      );
+      addTearDown(container.dispose);
+      await container.read(identityProvider.future);
+
+      await container.read(sessionProvider.notifier).createRoom(
+            gameId: 'tic-tac-toe',
+            displayName: 'Phong',
+          );
+
+      final session = container.read(sessionProvider);
+      expect(session.status, SessionStatus.failed);
+      expect(session.errorCode, 'NO_PERMISSION');
+    });
+  });
+
+  group('giao diện', () {
+    testWidgets('màn hình chính liệt kê game đã đăng ký', (tester) async {
+      await tester.pumpWidget(
+        const ProviderScope(child: MaterialApp(home: HomeScreen())),
+      );
+      await tester.pump();
+
+      expect(find.text('Game Hub'), findsOneWidget);
+      expect(find.text('Co caro 3x3'), findsOneWidget);
+      expect(find.textContaining('Wi-Fi'), findsWidgets);
+    });
+
+    testWidgets('phòng chờ hiện người chơi và khoá nút bắt đầu khi thiếu người',
+        (tester) async {
+      final network = LoopbackNetwork();
+      final container = _container(network, playerId: 'host', nickname: 'Vu');
+      addTearDown(container.dispose);
+
+      // runAsync để Timer của LocalLink chạy trên đồng hồ thật.
+      await tester.runAsync(() async {
+        await container.read(identityProvider.future);
+        await container.read(sessionProvider.notifier).createRoom(
+              gameId: 'tic-tac-toe',
+              displayName: 'Phong cua Vu',
+            );
+        await settle();
+      });
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: MaterialApp(
+            theme: buildTheme(Brightness.light),
+            home: const RoomScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Phong cua Vu'), findsOneWidget);
+      expect(find.text('Vu'), findsOneWidget);
+      expect(find.text('Sẵn sàng'), findsOneWidget);
+
+      final startButton = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Bắt đầu ván'),
+      );
+      expect(
+        startButton.onPressed,
+        isNull,
+        reason: 'một mình thì chưa được bắt đầu',
+      );
+
+      await tester.runAsync(
+        () => container.read(sessionProvider.notifier).leave(),
+      );
+    });
+
+    testWidgets('màn hình ván đấu vẽ bàn cờ và cho biết đang là lượt ai',
+        (tester) async {
+      final network = LoopbackNetwork();
+      final hostSide = _container(network, playerId: 'host', nickname: 'Vu');
+      final guestSide = _container(network, playerId: 'guest', nickname: 'Nam');
+      addTearDown(hostSide.dispose);
+      addTearDown(guestSide.dispose);
+
+      late RoomAddress address;
+
+      await tester.runAsync(() async {
+        await hostSide.read(identityProvider.future);
+        await guestSide.read(identityProvider.future);
+
+        await hostSide.read(sessionProvider.notifier).createRoom(
+              gameId: 'tic-tac-toe',
+              displayName: 'Phong',
+            );
+        await settle();
+
+        final discovery = LoopbackDiscovery(network);
+        await discovery.startDiscovery(gameId: 'tic-tac-toe');
+        address = (await discovery.rooms.first).first.address;
+        await discovery.dispose();
+
+        await guestSide
+            .read(sessionProvider.notifier)
+            .joinRoom(address, gameId: 'tic-tac-toe');
+        await settle();
+
+        hostSide.read(sessionProvider.notifier).setReady(ready: true);
+        guestSide.read(sessionProvider.notifier).setReady(ready: true);
+        await settle();
+        hostSide.read(sessionProvider.notifier).startGame();
+        await settle();
+      });
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: hostSide,
+          child: MaterialApp(
+            theme: buildTheme(Brightness.light),
+            home: const RoomScreen(),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.text('Lượt của bạn'), findsOneWidget);
+      expect(find.byType(AnimatedContainer), findsNWidgets(9),
+          reason: 'bàn cờ 3x3 có đúng 9 ô');
+
+      // Việc chạm ô rồi nước đi chạy qua host được kiểm tra ở hai chỗ khác,
+      // mỗi chỗ đúng tầng của nó: test đầu file kiểm tra trọn ván qua đúng
+      // tầng mạng của app, còn game_tictactoe kiểm tra chạm ô thì bàn cờ gọi
+      // onAction với đúng số ô.
+
+      await tester.runAsync(() async {
+        await hostSide.read(sessionProvider.notifier).leave();
+        await guestSide.read(sessionProvider.notifier).leave();
+      });
+    });
+  });
+}
