@@ -133,6 +133,70 @@ void main() {
     });
   });
 
+  group('ai', () {
+    test('cap do kho cao can nuoc thang ngay neu co the', () {
+      final board = List<Mark?>.filled(TicTacToeGame.boardSize * TicTacToeGame.boardSize, null);
+      for (final cell in [0, 1, 2, 3]) {
+        board[cell] = Mark.o;
+      }
+      final state = TicTacToeState(
+        board: board,
+        players: ['human', 'computer'],
+        xPlayerIndex: 0,
+        turnIndex: 1,
+      );
+
+      expect(
+        TicTacToeAi.pickMove(state, 'computer', TicTacToeDifficulty.hard),
+        4,
+      );
+      expect(
+        TicTacToeAi.pickMove(state, 'computer', TicTacToeDifficulty.expert),
+        4,
+      );
+    });
+
+    test('cap do trung va cao phai chan nuoc thang cua nguoi choi', () {
+      final board = List<Mark?>.filled(TicTacToeGame.boardSize * TicTacToeGame.boardSize, null);
+      for (final cell in [0, 1, 2, 3]) {
+        board[cell] = Mark.x;
+      }
+      final state = TicTacToeState(
+        board: board,
+        players: ['human', 'computer'],
+        xPlayerIndex: 0,
+        turnIndex: 1,
+      );
+
+      expect(
+        TicTacToeAi.pickMove(state, 'computer', TicTacToeDifficulty.medium),
+        4,
+      );
+      expect(
+        TicTacToeAi.pickMove(state, 'computer', TicTacToeDifficulty.hard),
+        4,
+      );
+    });
+
+    test('cap do de chi chon o trong hop le', () {
+      final board = List<Mark?>.filled(TicTacToeGame.boardSize * TicTacToeGame.boardSize, null);
+      for (final cell in [0, 1, 2, 3]) {
+        board[cell] = Mark.x;
+      }
+      final state = TicTacToeState(
+        board: board,
+        players: ['human', 'computer'],
+        xPlayerIndex: 0,
+        turnIndex: 1,
+      );
+
+      final move = TicTacToeAi.pickMove(state, 'computer', TicTacToeDifficulty.easy);
+      expect(move, isNotNull);
+      expect(move, isA<int>());
+      expect(board[move!], isNull);
+    });
+  });
+
   group('codec', () {
     test('state di qua encode/decode van nguyen ven', () {
       final state = playAll(newGame(), [0, 10, 1, 11, 2, 12, 3, 13, 4]);

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:bonsoir/bonsoir.dart';
+import 'package:flutter/foundation.dart';
 import 'package:platform_core/platform_core.dart';
 
 /// Kieu dich vu mDNS cua ca platform.
@@ -47,6 +48,7 @@ class LanDiscovery implements DiscoveryService {
 
   @override
   Future<void> advertise(RoomAdvertisement ad, {required int port}) async {
+    if (kIsWeb) return;
     await stopAdvertising();
 
     final service = BonsoirService(
@@ -73,6 +75,7 @@ class LanDiscovery implements DiscoveryService {
 
   @override
   Future<void> stopAdvertising() async {
+    if (kIsWeb) return;
     final broadcast = _broadcast;
     _broadcast = null;
     if (broadcast != null && !broadcast.isStopped) {
@@ -82,6 +85,12 @@ class LanDiscovery implements DiscoveryService {
 
   @override
   Future<void> startDiscovery({GameId? gameId}) async {
+    if (kIsWeb) {
+      _filterGameId = gameId;
+      _found.clear();
+      _emit();
+      return;
+    }
     await stopDiscovery();
     _filterGameId = gameId;
     _found.clear();
@@ -97,6 +106,12 @@ class LanDiscovery implements DiscoveryService {
 
   @override
   Future<void> stopDiscovery() async {
+    if (kIsWeb) {
+      _events = null;
+      _discovery = null;
+      _found.clear();
+      return;
+    }
     await _events?.cancel();
     _events = null;
 
@@ -111,6 +126,11 @@ class LanDiscovery implements DiscoveryService {
 
   @override
   Future<void> dispose() async {
+    if (kIsWeb) {
+      _found.clear();
+      if (!_rooms.isClosed) await _rooms.close();
+      return;
+    }
     await stopDiscovery();
     await stopAdvertising();
     if (!_rooms.isClosed) await _rooms.close();

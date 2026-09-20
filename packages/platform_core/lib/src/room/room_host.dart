@@ -9,6 +9,7 @@ import '../session/game_session.dart';
 import '../transport/local_link.dart';
 import '../transport/transport.dart';
 import 'room_models.dart';
+import 'room_settings.dart';
 
 /// Phia host cua mot phong: trong tai duy nhat.
 ///

@@ -175,6 +175,13 @@ packages:
       relative: true
     source: path
     version: "0.1.0"
+  game_xiangqi:
+    dependency: "direct main"
+    description:
+      path: "../packages/game_xiangqi"
+      relative: true
+    source: path
+    version: "0.1.0"
   http:
     dependency: transitive
     description:

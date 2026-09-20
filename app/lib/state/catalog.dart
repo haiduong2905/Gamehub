@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:game_tictactoe/game_tictactoe.dart';
+import 'package:game_xiangqi/game_xiangqi.dart';
 import 'package:platform_core/platform_core.dart';
 
 /// Mot game trong Game Hub: luat choi + cach ve + thong tin cho danh sach.
@@ -63,7 +64,9 @@ class GameCatalog {
 /// Dang ky tap trung o day chu khong dung static initializer tu-dang-ky:
 /// Dart khong dam bao chay chung, va tree-shaking se an mat.
 final gameCatalogProvider = Provider<GameCatalog>((ref) {
-  final registry = GameRegistry()..register(const TicTacToeGame());
+  final registry = GameRegistry()
+    ..register(const TicTacToeGame())
+    ..register(const XiangqiGame());
 
   return GameCatalog(
     registry: registry,
@@ -73,6 +76,12 @@ final gameCatalogProvider = Provider<GameCatalog>((ref) {
         buildBoard: TicTacToeBoard.build,
         icon: Icons.grid_4x4_rounded,
         tagline: 'Nam quan thang hang la thang.',
+      ),
+      CatalogEntry(
+        definition: registry.require('xiangqi'),
+        buildBoard: XiangqiBoard.build,
+        icon: Icons.sports_esports_rounded,
+        tagline: 'Cờ tướng 9x10, đối kháng theo luật truyền thống.',
       ),
     ],
   );

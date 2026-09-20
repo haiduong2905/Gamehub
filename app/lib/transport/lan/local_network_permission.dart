@@ -1,5 +1,4 @@
-import 'dart:io';
-
+import 'package:flutter/foundation.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// Ket qua xin quyen truy cap mang noi bo.
@@ -39,7 +38,7 @@ class LocalNetworkPermission {
   ///
   /// Phai goi TRUOC ca discovery lan connect, khong phai chi truoc discovery.
   Future<LocalNetworkAccess> request() async {
-    if (!Platform.isAndroid) {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
       // iOS khong co API xin truoc: he thong tu hien hop thoai o lan dau app
       // cham vao mang noi bo. Cac nen tang desktop khong doi quyen nay.
       return LocalNetworkAccess.granted;
@@ -55,7 +54,9 @@ class LocalNetworkPermission {
   }
 
   Future<LocalNetworkAccess> check() async {
-    if (!Platform.isAndroid) return LocalNetworkAccess.granted;
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return LocalNetworkAccess.granted;
+    }
 
     final status = await Permission.nearbyWifiDevices.status;
     if (status.isGranted || status.isLimited) return LocalNetworkAccess.granted;

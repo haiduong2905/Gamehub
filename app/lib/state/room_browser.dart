@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:platform_core/platform_core.dart';
 
@@ -35,6 +36,10 @@ class RoomBrowser extends AutoDisposeFamilyAsyncNotifier<BrowserState, GameId> {
       unawaited(_sub?.cancel());
       unawaited(_discovery?.dispose());
     });
+
+    if (kIsWeb) {
+      return const BrowserState(scanning: false);
+    }
 
     const permission = LocalNetworkPermission();
     final access = await permission.request();

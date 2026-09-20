@@ -14,6 +14,8 @@ dependencies:
     path: ../packages/platform_core
   game_tictactoe:
     path: ../packages/game_tictactoe
+  game_xiangqi:
+    path: ../packages/game_xiangqi
 
   flutter_riverpod: ^2.6.1
   bonsoir: ^5.1.11
