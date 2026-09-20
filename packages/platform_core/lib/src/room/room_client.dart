@@ -41,6 +41,8 @@ class RoomClientState {
     this.seatOrder = const [],
     this.result,
     this.pendingActionId,
+    this.gameDeadlineMillis,
+    this.turnDeadlineMillis,
     this.errorCode,
     this.errorMessage,
     this.closeCode,
@@ -62,6 +64,8 @@ class RoomClientState {
   /// Day KHONG phai du doan lac quan: client khong he tu ve ket qua nuoc di,
   /// no chi bao cho nguoi dung biet cham vua duoc ghi nhan.
   final String? pendingActionId;
+  final int? gameDeadlineMillis;
+  final int? turnDeadlineMillis;
 
   final String? errorCode;
   final String? errorMessage;
@@ -86,6 +90,8 @@ class RoomClientState {
     List<PlayerId>? seatOrder,
     GameResult? result,
     String? pendingActionId,
+    int? gameDeadlineMillis,
+    int? turnDeadlineMillis,
     String? errorCode,
     String? errorMessage,
     String? closeCode,
@@ -104,6 +110,8 @@ class RoomClientState {
         result: clearResult ? null : (result ?? this.result),
         pendingActionId:
             clearPendingAction ? null : (pendingActionId ?? this.pendingActionId),
+        gameDeadlineMillis: gameDeadlineMillis ?? this.gameDeadlineMillis,
+        turnDeadlineMillis: turnDeadlineMillis ?? this.turnDeadlineMillis,
         errorCode: clearError ? null : (errorCode ?? this.errorCode),
         errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
         closeCode: closeCode ?? this.closeCode,
@@ -242,6 +250,8 @@ class RoomClient {
             stateVersion: message.stateVersion,
             currentActors: message.currentActors,
             seatOrder: message.seatOrder,
+            gameDeadlineMillis: message.gameDeadlineMillis,
+            turnDeadlineMillis: message.turnDeadlineMillis,
             clearPendingAction: true,
             clearError: true,
             clearResult: true,
@@ -257,6 +267,8 @@ class RoomClient {
             gameState: message.state,
             stateVersion: message.stateVersion,
             currentActors: message.currentActors,
+            gameDeadlineMillis: message.gameDeadlineMillis,
+            turnDeadlineMillis: message.turnDeadlineMillis,
             clearPendingAction: clearPending,
           ),
         );
@@ -268,6 +280,8 @@ class RoomClient {
             gameState: message.state,
             stateVersion: message.stateVersion,
             currentActors: const [],
+            gameDeadlineMillis: message.gameDeadlineMillis,
+            turnDeadlineMillis: message.turnDeadlineMillis,
             result: message.result,
             clearPendingAction: true,
           ),

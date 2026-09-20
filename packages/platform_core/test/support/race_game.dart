@@ -54,7 +54,11 @@ class RaceGame extends GameDefinition<RaceState, RaceMove> {
   int get maxPlayers => 4;
 
   @override
-  RaceState createInitialState(List<PlayerId> players, {required int seed}) =>
+  RaceState createInitialState(
+    List<PlayerId> players, {
+    required int seed,
+    Map<String, dynamic> options = const {},
+  }) =>
       RaceState(
         players: List<PlayerId>.unmodifiable(players),
         scores: {for (final p in players) p: 0},
@@ -145,6 +149,7 @@ class SecretNumberGame extends GameDefinition<Map<String, dynamic>, RaceMove> {
   Map<String, dynamic> createInitialState(
     List<PlayerId> players, {
     required int seed,
+    Map<String, dynamic> options = const {},
   }) =>
       {
         'players': players,

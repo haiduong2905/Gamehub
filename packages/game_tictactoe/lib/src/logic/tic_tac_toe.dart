@@ -3,7 +3,7 @@ import 'package:platform_core/platform_core.dart';
 /// Ky hieu cua mot o tren ban co.
 enum Mark { x, o }
 
-/// Mot nuoc di: danh vao o so [cell], dem tu 0 den 8 theo hang.
+/// Mot nuoc di: danh vao o so [cell], dem tu 0 den 399 theo hang.
 class TicTacToeMove {
   const TicTacToeMove(this.cell);
 
@@ -13,7 +13,7 @@ class TicTacToeMove {
   String toString() => 'TicTacToeMove($cell)';
 }
 
-/// State cua mot van co caro 3x3.
+/// State cua mot van co caro 20x20, thang khi co 5 quan lien tiep.
 ///
 /// Bat bien: khong co ham nao sua doi state tai cho. [TicTacToeGame.apply]
 /// luon tra ve mot state moi.
@@ -21,29 +21,33 @@ class TicTacToeState {
   const TicTacToeState({
     required this.board,
     required this.players,
+    required this.xPlayerIndex,
     required this.turnIndex,
     this.winningLine,
   });
 
-  /// 9 o. `null` la o trong.
+  /// 400 o. `null` la o trong.
   final List<Mark?> board;
 
-  /// Thu tu di. players[0] danh X, players[1] danh O.
+  /// Thu tu ngoi. Ky hieu duoc luu trong [xPlayerIndex].
   final List<PlayerId> players;
+
+  /// Vi tri cua nguoi choi X trong [players].
+  final int xPlayerIndex;
 
   /// Vi tri trong [players] cua nguoi dang den luot.
   final int turnIndex;
 
-  /// Ba o tao thanh duong thang thang cuoc, de UI to sang.
+  /// Cac o tao thanh duong 5 quan thang cuoc, de UI to sang.
   final List<int>? winningLine;
 
   PlayerId get currentPlayer => players[turnIndex];
 
-  Mark get currentMark => turnIndex == 0 ? Mark.x : Mark.o;
+  Mark get currentMark => turnIndex == xPlayerIndex ? Mark.x : Mark.o;
 
   Mark markOf(PlayerId player) {
     final index = players.indexOf(player);
-    return index == 0 ? Mark.x : Mark.o;
+    return index == xPlayerIndex ? Mark.x : Mark.o;
   }
 
   bool get isBoardFull => board.every((cell) => cell != null);
@@ -55,33 +59,26 @@ class TicTacToeState {
     final line = winningLine;
     if (line == null) return null;
     final mark = board[line.first]!;
-    return players[mark == Mark.x ? 0 : 1];
+    final playerIndex = mark == Mark.x ? xPlayerIndex : 1 - xPlayerIndex;
+    return players[playerIndex];
   }
 }
 
-/// Co caro 3x3 - game dau tien, dung de kiem chung ca platform.
+/// Co caro 20x20, thang khi co 5 quan lien tiep.
 ///
 /// Toan bo file nay la pure Dart va khong biet gi ve socket, IP, phong hay
 /// giao dien. Do la toan bo dieu kien de mot game duoc cam vao platform.
 class TicTacToeGame extends GameDefinition<TicTacToeState, TicTacToeMove> {
   const TicTacToeGame();
 
-  static const List<List<int>> _lines = [
-    [0, 1, 2],
-    [3, 4, 5],
-    [6, 7, 8],
-    [0, 3, 6],
-    [1, 4, 7],
-    [2, 5, 8],
-    [0, 4, 8],
-    [2, 4, 6],
-  ];
+  static const boardSize = 20;
+  static const winLength = 5;
 
   @override
   GameId get id => 'tic-tac-toe';
 
   @override
-  String get name => 'Co caro 3x3';
+  String get name => 'Co caro 20x20';
 
   @override
   int get minPlayers => 2;
@@ -93,12 +90,17 @@ class TicTacToeGame extends GameDefinition<TicTacToeState, TicTacToeMove> {
   TicTacToeState createInitialState(
     List<PlayerId> players, {
     required int seed,
-  }) =>
-      TicTacToeState(
-        board: List<Mark?>.filled(9, null),
-        players: List<PlayerId>.unmodifiable(players.take(2)),
-        turnIndex: 0,
-      );
+    Map<String, dynamic> options = const {},
+  }) {
+    final selectedHostMark = options['hostMark'] == 'o' ? Mark.o : Mark.x;
+    final xPlayerIndex = selectedHostMark == Mark.x ? 0 : 1;
+    return TicTacToeState(
+      board: List<Mark?>.filled(boardSize * boardSize, null),
+      players: List<PlayerId>.unmodifiable(players.take(2)),
+      xPlayerIndex: xPlayerIndex,
+      turnIndex: xPlayerIndex,
+    );
+  }
 
   @override
   List<PlayerId> currentActors(TicTacToeState state) =>
@@ -116,7 +118,7 @@ class TicTacToeGame extends GameDefinition<TicTacToeState, TicTacToeMove> {
     if (actor != state.currentPlayer) {
       return const ValidationResult.invalid('NOT_YOUR_TURN');
     }
-    if (action.cell < 0 || action.cell > 8) {
+    if (action.cell < 0 || action.cell >= boardSize * boardSize) {
       return const ValidationResult.invalid('OUT_OF_BOARD');
     }
     if (state.board[action.cell] != null) {
@@ -140,18 +142,33 @@ class TicTacToeGame extends GameDefinition<TicTacToeState, TicTacToeMove> {
     return TicTacToeState(
       board: board,
       players: state.players,
+      xPlayerIndex: state.xPlayerIndex,
       turnIndex: (state.turnIndex + 1) % state.players.length,
       winningLine: _findWinningLine(board),
     );
   }
 
   static List<int>? _findWinningLine(List<Mark?> board) {
-    for (final line in _lines) {
-      final first = board[line[0]];
-      if (first != null &&
-          board[line[1]] == first &&
-          board[line[2]] == first) {
-        return line;
+    const directions = [(0, 1), (1, 0), (1, 1), (1, -1)];
+    for (var row = 0; row < boardSize; row++) {
+      for (var column = 0; column < boardSize; column++) {
+        final mark = board[row * boardSize + column];
+        if (mark == null) continue;
+        for (final (rowStep, columnStep) in directions) {
+          final line = <int>[];
+          for (var offset = 0; offset < winLength; offset++) {
+            final nextRow = row + rowStep * offset;
+            final nextColumn = column + columnStep * offset;
+            if (nextRow < 0 || nextRow >= boardSize ||
+                nextColumn < 0 || nextColumn >= boardSize) {
+              break;
+            }
+            final index = nextRow * boardSize + nextColumn;
+            if (board[index] != mark) break;
+            line.add(index);
+          }
+          if (line.length == winLength) return line;
+        }
       }
     }
     return null;
@@ -172,6 +189,7 @@ class TicTacToeGame extends GameDefinition<TicTacToeState, TicTacToeMove> {
   Map<String, dynamic> encodeState(TicTacToeState state) => {
         'board': state.board.map((m) => m?.name).toList(),
         'players': state.players,
+        'xPlayerIndex': state.xPlayerIndex,
         'turnIndex': state.turnIndex,
         if (state.winningLine != null) 'winningLine': state.winningLine,
       };
@@ -188,6 +206,7 @@ class TicTacToeGame extends GameDefinition<TicTacToeState, TicTacToeMove> {
         players: (json['players'] as List<dynamic>)
             .map((dynamic e) => e as String)
             .toList(growable: false),
+        xPlayerIndex: json['xPlayerIndex'] as int? ?? 0,
         turnIndex: json['turnIndex'] as int,
         winningLine: (json['winningLine'] as List<dynamic>?)
             ?.map((dynamic e) => e as int)

@@ -107,10 +107,14 @@ void main() {
       // Host là X và thắng bằng hàng trên cùng.
       for (final move in [
         (hostSide, 0),
-        (guestSide, 3),
+        (guestSide, 10),
         (hostSide, 1),
-        (guestSide, 4),
+        (guestSide, 11),
         (hostSide, 2),
+        (guestSide, 12),
+        (hostSide, 3),
+        (guestSide, 13),
+        (hostSide, 4),
       ]) {
         move.$1.read(sessionProvider.notifier).sendAction({'cell': move.$2});
         await settle();
@@ -125,7 +129,7 @@ void main() {
 
       final board = const TicTacToeGame()
           .decodeState(guestSide.read(sessionProvider).client!.gameState!);
-      expect(board.winningLine, [0, 1, 2]);
+      expect(board.winningLine, [0, 1, 2, 3, 4]);
 
       await discovery.dispose();
       await hostSide.read(sessionProvider.notifier).leave();
@@ -169,7 +173,7 @@ void main() {
       await tester.pump();
 
       expect(find.text('Game Hub'), findsOneWidget);
-      expect(find.text('Co caro 3x3'), findsOneWidget);
+      expect(find.text('Co caro 20x20'), findsOneWidget);
       expect(find.textContaining('Wi-Fi'), findsWidgets);
     });
 

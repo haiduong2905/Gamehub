@@ -3,7 +3,7 @@ import 'package:platform_core/platform_core.dart';
 
 import '../logic/tic_tac_toe.dart';
 
-/// Ban co caro.
+/// Ban co caro 20x20, thang khi co 5 quan lien tiep.
 ///
 /// Chi ve lai [GameView.state] ma host gui xuong va gui nuoc di di. Khong tu
 /// suy ra luat, khong tu danh dau o, khong tu ket luan thang thua.
@@ -50,35 +50,31 @@ class _TicTacToeBoardState extends State<TicTacToeBoard> {
     final pendingCell = view.hasPendingAction ? _tappedCell : null;
 
     return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 420),
-        child: AspectRatio(
-          aspectRatio: 1,
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final gap = constraints.maxWidth * 0.022;
-              return GridView.builder(
-                padding: EdgeInsets.zero,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: 9,
-                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  mainAxisSpacing: gap,
-                  crossAxisSpacing: gap,
-                ),
-                itemBuilder: (context, index) => _Cell(
-                  mark: state.board[index],
-                  highlighted: winningLine.contains(index),
-                  pending: pendingCell == index,
-                  myMark: state.markOf(view.me),
-                  enabled: view.canAct && state.board[index] == null,
-                  dimmed: winningLine.isNotEmpty &&
-                      !winningLine.contains(index) &&
-                      state.board[index] != null,
-                  onTap: () => _tap(index),
-                ),
-              );
-            },
+      child: InteractiveViewer(
+        minScale: 0.5,
+        maxScale: 3,
+        boundaryMargin: const EdgeInsets.all(80),
+        constrained: false,
+        child: SizedBox.square(
+          dimension: 720,
+          child: GridView.builder(
+            padding: EdgeInsets.zero,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: TicTacToeGame.boardSize * TicTacToeGame.boardSize,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: TicTacToeGame.boardSize,
+            ),
+            itemBuilder: (context, index) => _Cell(
+              mark: state.board[index],
+              highlighted: winningLine.contains(index),
+              pending: pendingCell == index,
+              myMark: state.markOf(view.me),
+              enabled: view.canAct && state.board[index] == null,
+              dimmed: winningLine.isNotEmpty &&
+                  !winningLine.contains(index) &&
+                  state.board[index] != null,
+              onTap: () => _tap(index),
+            ),
           ),
         ),
       ),
@@ -112,10 +108,11 @@ class _Cell extends StatelessWidget {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       decoration: BoxDecoration(
-        color: highlighted
-            ? scheme.primaryContainer
-            : scheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(14),
+        color: highlighted ? const Color(0xFFFFF1A8) : Colors.white,
+        border: Border.all(
+          color: const Color(0xFFB8BDC2),
+          width: 1,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: Material(
@@ -148,8 +145,9 @@ class _MarkGlyph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final color = mark == Mark.x ? scheme.primary : scheme.tertiary;
+    final color = mark == Mark.x
+      ? const Color(0xFF1729D9)
+      : const Color(0xFFF01818);
 
     return Opacity(
       opacity: opacity,

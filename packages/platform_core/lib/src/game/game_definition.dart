@@ -19,7 +19,11 @@ abstract class GameDefinition<S, A> {
   ///
   /// [seed] do host sinh ra va phat cho tat ca client, nen game co yeu to
   /// ngau nhien (chia bai, xao quan) van cho ra ket qua tat dinh o moi may.
-  S createInitialState(List<PlayerId> players, {required int seed});
+  S createInitialState(
+    List<PlayerId> players, {
+    required int seed,
+    Map<String, dynamic> options = const {},
+  });
 
   /// Kiem tra nuoc di co hop le khong. KHONG duoc thay doi [state].
   ValidationResult validate(S state, PlayerId actor, A action);

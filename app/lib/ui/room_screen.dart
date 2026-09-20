@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -398,7 +400,12 @@ class _GameView extends ConsumerWidget {
       appBar: AppBar(title: Text(entry.name)),
       body: Column(
         children: [
-          _TurnBanner(view: view, finished: client.phase == ClientPhase.finished),
+          _TurnBanner(
+            view: view,
+            finished: client.phase == ClientPhase.finished,
+            gameDeadlineMillis: client.gameDeadlineMillis,
+            turnDeadlineMillis: client.turnDeadlineMillis,
+          ),
           if (disconnected.isNotEmpty)
             _DisconnectBanner(nickname: disconnected.first.nickname),
           Expanded(
@@ -415,22 +422,52 @@ class _GameView extends ConsumerWidget {
   }
 }
 
-class _TurnBanner extends StatelessWidget {
-  const _TurnBanner({required this.view, required this.finished});
+class _TurnBanner extends StatefulWidget {
+  const _TurnBanner({
+    required this.view,
+    required this.finished,
+    this.gameDeadlineMillis,
+    this.turnDeadlineMillis,
+  });
 
   final GameView view;
   final bool finished;
+  final int? gameDeadlineMillis;
+  final int? turnDeadlineMillis;
+
+  @override
+  State<_TurnBanner> createState() => _TurnBannerState();
+}
+
+class _TurnBannerState extends State<_TurnBanner> {
+  Timer? _ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final gameTime = _remaining(widget.gameDeadlineMillis);
+    final turnTime = _remaining(widget.turnDeadlineMillis);
 
     final (label, color) = switch (true) {
-      _ when finished => ('Ván đấu đã kết thúc', theme.colorScheme.onSurfaceVariant),
-      _ when view.hasPendingAction => ('Đang gửi nước đi…', theme.colorScheme.onSurfaceVariant),
-      _ when view.isMyTurn => ('Lượt của bạn', theme.colorScheme.primary),
+      _ when widget.finished => ('Ván đấu đã kết thúc', theme.colorScheme.onSurfaceVariant),
+      _ when widget.view.hasPendingAction => ('Đang gửi nước đi...', theme.colorScheme.onSurfaceVariant),
+      _ when widget.view.isMyTurn => ('Lượt của bạn', theme.colorScheme.primary),
       _ => (
-          'Đang chờ ${view.nicknameOf(view.currentActors.firstOrNull ?? "")}',
+          'Đang chờ ${widget.view.nicknameOf(widget.view.currentActors.firstOrNull ?? "")}',
           theme.colorScheme.onSurfaceVariant
         ),
     };
@@ -441,7 +478,7 @@ class _TurnBanner extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          if (view.hasPendingAction) ...[
+          if (widget.view.hasPendingAction) ...[
             const SizedBox(
               width: 14,
               height: 14,
@@ -456,9 +493,33 @@ class _TurnBanner extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
+          if (turnTime != null || gameTime != null) ...[
+            const SizedBox(width: 12),
+            Text(
+              [
+                if (turnTime != null) 'Lượt ${_formatDuration(turnTime)}',
+                if (gameTime != null) 'Ván ${_formatDuration(gameTime)}',
+              ].join(' · '),
+              style: theme.textTheme.labelLarge?.copyWith(
+                color: theme.colorScheme.error,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Duration? _remaining(int? deadline) {
+    if (deadline == null) return null;
+    final milliseconds = deadline - DateTime.now().millisecondsSinceEpoch;
+    return Duration(milliseconds: milliseconds.clamp(0, 1 << 31));
+  }
+
+  String _formatDuration(Duration duration) {
+    final seconds = duration.inSeconds;
+    return '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
   }
 }
 

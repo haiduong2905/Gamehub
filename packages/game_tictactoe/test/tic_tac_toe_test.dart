@@ -4,8 +4,8 @@ import 'package:platform_core/platform_core.dart';
 
 const game = TicTacToeGame();
 
-TicTacToeState newGame() =>
-    game.createInitialState(['x-player', 'o-player'], seed: 0);
+TicTacToeState newGame({Map<String, dynamic> options = const {}}) =>
+  game.createInitialState(['x-player', 'o-player'], seed: 0, options: options);
 
 TicTacToeState playAll(TicTacToeState state, List<int> cells) {
   var current = state;
@@ -55,13 +55,22 @@ void main() {
 
     test('khong duoc danh ra ngoai ban co', () {
       expect(
-        game.validate(newGame(), 'x-player', const TicTacToeMove(9)).code,
+        game.validate(newGame(), 'x-player', const TicTacToeMove(100)).code,
         'OUT_OF_BOARD',
       );
       expect(
         game.validate(newGame(), 'x-player', const TicTacToeMove(-1)).code,
         'OUT_OF_BOARD',
       );
+    });
+
+    test('chu phong chon O thi O di sau va X cua doi thu di truoc', () {
+      final state = newGame(options: {'hostMark': 'o'});
+
+      expect(state.currentMark, Mark.x);
+      expect(state.currentPlayer, 'o-player');
+      expect(state.markOf('x-player'), Mark.o);
+      expect(state.markOf('o-player'), Mark.x);
     });
 
     test('apply khong duoc sua state cu', () {
@@ -74,53 +83,48 @@ void main() {
 
   group('thang thua', () {
     test('thang theo hang ngang', () {
-      // X: 0,1,2   O: 3,4
-      final state = playAll(newGame(), [0, 3, 1, 4, 2]);
+      // X: 0,1,2,3,4   O: 10,11,12,13
+      final state = playAll(newGame(), [0, 10, 1, 11, 2, 12, 3, 13, 4]);
 
       expect(game.isFinished(state), isTrue);
-      expect(state.winningLine, [0, 1, 2]);
+      expect(state.winningLine, [0, 1, 2, 3, 4]);
       expect(game.getResult(state).winners, ['x-player']);
       expect(game.currentActors(state), isEmpty);
     });
 
     test('thang theo cot doc', () {
-      // X: 0,3,6   O: 1,4
-      final state = playAll(newGame(), [0, 1, 3, 4, 6]);
+      // X: 0,10,20,30,40   O: 1,2,3,4
+      final state = playAll(newGame(), [0, 1, 10, 2, 20, 3, 30, 4, 40]);
 
-      expect(state.winningLine, [0, 3, 6]);
+      expect(state.winningLine, [0, 10, 20, 30, 40]);
       expect(game.getResult(state).winners, ['x-player']);
     });
 
     test('thang theo duong cheo', () {
-      // X: 0,4,8   O: 1,2
-      final state = playAll(newGame(), [0, 1, 4, 2, 8]);
+      // X: 0,11,22,33,44   O: 1,2,3,4
+      final state = playAll(newGame(), [0, 1, 11, 2, 22, 3, 33, 4, 44]);
 
-      expect(state.winningLine, [0, 4, 8]);
+      expect(state.winningLine, [0, 11, 22, 33, 44]);
       expect(game.getResult(state).isWin, isTrue);
     });
 
     test('nguoi danh O cung thang duoc', () {
-      // X: 0,1,5  O: 3,4,8 -> khong phai duong thang cua O... dung the co the:
-      // X: 0,1,8  O: 3,4,5
-      final state = playAll(newGame(), [0, 3, 1, 4, 8, 5]);
+      // X: 0,1,2,3,9  O: 10,11,12,13,14
+      final state = playAll(newGame(), [0, 10, 1, 11, 2, 12, 3, 13, 9, 14]);
 
-      expect(state.winningLine, [3, 4, 5]);
+      expect(state.winningLine, [10, 11, 12, 13, 14]);
       expect(game.getResult(state).winners, ['o-player']);
     });
 
-    test('day ban co ma khong ai thang thi hoa', () {
-      // X O X
-      // X O O
-      // O X X
-      final state = playAll(newGame(), [0, 1, 2, 4, 3, 5, 7, 6, 8]);
+    test('chua du 5 quan thi van chua ket thuc', () {
+      final state = playAll(newGame(), [0, 10, 1, 11, 2, 12, 3]);
 
-      expect(game.isFinished(state), isTrue);
+      expect(game.isFinished(state), isFalse);
       expect(state.hasWinner, isFalse);
-      expect(game.getResult(state).isDraw, isTrue);
     });
 
     test('da ket thuc thi khong danh tiep duoc', () {
-      final state = playAll(newGame(), [0, 3, 1, 4, 2]);
+      final state = playAll(newGame(), [0, 10, 1, 11, 2, 12, 3, 13, 4]);
 
       expect(
         game.validate(state, 'o-player', const TicTacToeMove(6)).code,
@@ -131,7 +135,7 @@ void main() {
 
   group('codec', () {
     test('state di qua encode/decode van nguyen ven', () {
-      final state = playAll(newGame(), [0, 3, 1, 4, 2]);
+      final state = playAll(newGame(), [0, 10, 1, 11, 2, 12, 3, 13, 4]);
       final restored = game.decodeState(game.encodeState(state));
 
       expect(restored.board, state.board);
@@ -205,10 +209,14 @@ void main() {
       // Host la X va thang bang hang tren cung.
       for (final move in [
         (hostClient, 0),
-        (guest, 3),
+        (guest, 10),
         (hostClient, 1),
-        (guest, 4),
+        (guest, 11),
         (hostClient, 2),
+        (guest, 12),
+        (hostClient, 3),
+        (guest, 13),
+        (hostClient, 4),
       ]) {
         move.$1.sendAction({'cell': move.$2});
         await settle();
@@ -220,7 +228,7 @@ void main() {
           reason: 'ca hai may phai nhan cung ket qua tu host');
 
       final finalState = game.decodeState(guest.state.gameState!);
-      expect(finalState.winningLine, [0, 1, 2]);
+      expect(finalState.winningLine, [0, 1, 2, 3, 4]);
 
       await hostClient.dispose();
       await guest.dispose();
@@ -233,7 +241,7 @@ void main() {
       final registry = GameRegistry()..register(const TicTacToeGame());
 
       expect(registry.contains('tic-tac-toe'), isTrue);
-      expect(registry.require('tic-tac-toe').name, 'Co caro 3x3');
+      expect(registry.require('tic-tac-toe').name, 'Co caro 20x20');
       expect(registry.all, hasLength(1));
     });
   });

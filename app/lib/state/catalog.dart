@@ -71,8 +71,8 @@ final gameCatalogProvider = Provider<GameCatalog>((ref) {
       CatalogEntry(
         definition: registry.require('tic-tac-toe'),
         buildBoard: TicTacToeBoard.build,
-        icon: Icons.grid_3x3_rounded,
-        tagline: 'Ba o thang hang la thang.',
+        icon: Icons.grid_4x4_rounded,
+        tagline: 'Nam quan thang hang la thang.',
       ),
     ],
   );

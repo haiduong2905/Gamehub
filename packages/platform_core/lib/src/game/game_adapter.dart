@@ -23,6 +23,7 @@ abstract class GameAdapter {
   Map<String, dynamic> createInitialState(
     List<PlayerId> players, {
     required int seed,
+    Map<String, dynamic> options = const {},
   });
 
   ValidationResult validate(
@@ -67,9 +68,10 @@ class _TypedGameAdapter<S, A> implements GameAdapter {
   Map<String, dynamic> createInitialState(
     List<PlayerId> players, {
     required int seed,
+    Map<String, dynamic> options = const {},
   }) =>
       _definition.encodeState(
-        _definition.createInitialState(players, seed: seed),
+        _definition.createInitialState(players, seed: seed, options: options),
       );
 
   @override

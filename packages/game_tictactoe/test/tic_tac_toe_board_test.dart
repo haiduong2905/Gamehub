@@ -41,12 +41,13 @@ Widget _board({
 }
 
 void main() {
-  testWidgets('bàn cờ có đúng 9 ô', (tester) async {
+  testWidgets('bàn cờ 20x20 có thể pan qua InteractiveViewer', (tester) async {
     await tester.pumpWidget(
       _board(movesPlayed: const [], me: 'x-player', onAction: (_) {}),
     );
 
-    expect(find.byType(AnimatedContainer), findsNWidgets(9));
+    expect(find.byType(InteractiveViewer), findsOneWidget);
+    expect(find.byType(AnimatedContainer), findsAtLeastNWidgets(1));
   });
 
   testWidgets('chạm ô trống khi đến lượt thì gọi onAction với đúng số ô',
@@ -111,7 +112,7 @@ void main() {
     final sent = <Map<String, dynamic>>[];
     await tester.pumpWidget(
       _board(
-        movesPlayed: const [0, 3, 1, 4, 2],
+        movesPlayed: const [0, 10, 1, 11, 2, 12, 3, 13, 4],
         me: 'x-player',
         result: GameResult.win('x-player'),
         onAction: sent.add,

@@ -272,6 +272,8 @@ class GameStart extends Message {
     required this.state,
     required this.currentActors,
     required this.seatOrder,
+    this.gameDeadlineMillis,
+    this.turnDeadlineMillis,
   });
 
   final GameId gameId;
@@ -283,6 +285,8 @@ class GameStart extends Message {
 
   /// Thu tu di, da chot luc bat dau van.
   final List<PlayerId> seatOrder;
+  final int? gameDeadlineMillis;
+  final int? turnDeadlineMillis;
 
   @override
   String get type => 'GAME_START';
@@ -294,6 +298,8 @@ class GameStart extends Message {
         'state': state,
         'currentActors': currentActors,
         'seatOrder': seatOrder,
+        if (gameDeadlineMillis != null) 'gameDeadlineMillis': gameDeadlineMillis,
+        if (turnDeadlineMillis != null) 'turnDeadlineMillis': turnDeadlineMillis,
       };
 
   static GameStart fromPayload(Map<String, dynamic> p) => GameStart(
@@ -306,6 +312,8 @@ class GameStart extends Message {
         seatOrder: (p['seatOrder'] as List<dynamic>)
             .map((dynamic e) => e as String)
             .toList(growable: false),
+          gameDeadlineMillis: p['gameDeadlineMillis'] as int?,
+          turnDeadlineMillis: p['turnDeadlineMillis'] as int?,
       );
 }
 
@@ -316,6 +324,8 @@ class GameStateMessage extends Message {
     required this.state,
     required this.currentActors,
     this.lastActionId,
+    this.gameDeadlineMillis,
+    this.turnDeadlineMillis,
   });
 
   final int stateVersion;
@@ -324,6 +334,8 @@ class GameStateMessage extends Message {
 
   /// Nuoc di vua duoc ap dung, de client bo trang thai "dang cho".
   final String? lastActionId;
+  final int? gameDeadlineMillis;
+  final int? turnDeadlineMillis;
 
   @override
   String get type => 'GAME_STATE';
@@ -334,6 +346,8 @@ class GameStateMessage extends Message {
         'state': state,
         'currentActors': currentActors,
         if (lastActionId != null) 'lastActionId': lastActionId,
+        if (gameDeadlineMillis != null) 'gameDeadlineMillis': gameDeadlineMillis,
+        if (turnDeadlineMillis != null) 'turnDeadlineMillis': turnDeadlineMillis,
       };
 
   static GameStateMessage fromPayload(Map<String, dynamic> p) =>
@@ -344,6 +358,8 @@ class GameStateMessage extends Message {
             .map((dynamic e) => e as String)
             .toList(growable: false),
         lastActionId: p['lastActionId'] as String?,
+        gameDeadlineMillis: p['gameDeadlineMillis'] as int?,
+        turnDeadlineMillis: p['turnDeadlineMillis'] as int?,
       );
 }
 
@@ -353,11 +369,15 @@ class GameResultMessage extends Message {
     required this.stateVersion,
     required this.state,
     required this.result,
+    this.gameDeadlineMillis,
+    this.turnDeadlineMillis,
   });
 
   final int stateVersion;
   final Map<String, dynamic> state;
   final GameResult result;
+  final int? gameDeadlineMillis;
+  final int? turnDeadlineMillis;
 
   @override
   String get type => 'GAME_RESULT';
@@ -367,6 +387,8 @@ class GameResultMessage extends Message {
         'stateVersion': stateVersion,
         'state': state,
         'result': result.toJson(),
+        if (gameDeadlineMillis != null) 'gameDeadlineMillis': gameDeadlineMillis,
+        if (turnDeadlineMillis != null) 'turnDeadlineMillis': turnDeadlineMillis,
       };
 
   static GameResultMessage fromPayload(Map<String, dynamic> p) =>
@@ -375,6 +397,8 @@ class GameResultMessage extends Message {
         state: (p['state'] as Map).cast<String, dynamic>(),
         result:
             GameResult.fromJson((p['result'] as Map).cast<String, dynamic>()),
+        gameDeadlineMillis: p['gameDeadlineMillis'] as int?,
+        turnDeadlineMillis: p['turnDeadlineMillis'] as int?,
       );
 }
 

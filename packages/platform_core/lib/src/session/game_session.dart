@@ -42,7 +42,12 @@ class GameSession {
     required this.adapter,
     required this.seatOrder,
     required int seed,
-  })  : _state = adapter.createInitialState(seatOrder, seed: seed),
+    Map<String, dynamic> options = const {},
+  })  : _state = adapter.createInitialState(
+          seatOrder,
+          seed: seed,
+          options: options,
+        ),
         _stateVersion = 1;
 
   final GameAdapter adapter;
@@ -117,6 +122,18 @@ class GameSession {
   void abandon({String? reason}) {
     if (isFinished) return;
     _result = GameResult.abandoned(reason: reason);
+    _stateVersion++;
+  }
+
+  /// Het thoi gian luot: nguoi dang choi thua, neu game co doi thu.
+  void timeout() {
+    if (isFinished) return;
+    final actor = currentActors.firstOrNull;
+    if (actor == null) return;
+    final winner = seatOrder.where((player) => player != actor).toList();
+    _result = winner.isEmpty
+        ? const GameResult.abandoned(reason: 'TURN_TIMEOUT')
+        : GameResult.winners(winner, reason: 'TURN_TIMEOUT');
     _stateVersion++;
   }
 }

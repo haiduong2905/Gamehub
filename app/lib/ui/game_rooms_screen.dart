@@ -8,6 +8,7 @@ import '../state/room_browser.dart';
 import '../state/session.dart';
 import '../transport/lan/local_network_permission.dart';
 import 'messages.dart';
+import 'local_game_screen.dart';
 import 'room_screen.dart';
 
 /// Tìm phòng của một game, hoặc tự tạo phòng mới.
@@ -48,6 +49,16 @@ class GameRoomsScreen extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            OutlinedButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => LocalGameScreen(gameId: gameId),
+                ),
+              ),
+              icon: const Icon(Icons.smart_toy_outlined),
+              label: const Text('Chơi với máy'),
+            ),
+            const SizedBox(height: 8),
             FilledButton.icon(
               onPressed: () => _createRoom(context, ref, entry),
               icon: const Icon(Icons.add_rounded),
@@ -71,10 +82,16 @@ class GameRoomsScreen extends ConsumerWidget {
     CatalogEntry entry,
   ) async {
     final nickname = ref.read(identityProvider).valueOrNull?.nickname ?? 'Chủ phòng';
+    final settings = await showDialog<RoomSettings>(
+      context: context,
+      builder: (_) => const _CreateRoomDialog(),
+    );
+    if (settings == null || !context.mounted) return;
 
     await ref.read(sessionProvider.notifier).createRoom(
           gameId: gameId,
           displayName: 'Phòng của $nickname',
+          settings: settings,
         );
 
     if (!context.mounted) return;
@@ -92,6 +109,84 @@ class GameRoomsScreen extends ConsumerWidget {
 
     if (!context.mounted) return;
     _openRoomOrShowError(context, ref);
+  }
+}
+
+class _CreateRoomDialog extends StatefulWidget {
+  const _CreateRoomDialog();
+
+  @override
+  State<_CreateRoomDialog> createState() => _CreateRoomDialogState();
+}
+
+class _CreateRoomDialogState extends State<_CreateRoomDialog> {
+  String _hostMark = 'x';
+  int? _gameMinutes = 10;
+  int? _turnSeconds = 60;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Thiết lập ván chơi'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DropdownButtonFormField<String>(
+            value: _hostMark,
+            decoration: const InputDecoration(labelText: 'Bạn chơi'),
+            items: const [
+              DropdownMenuItem(value: 'x', child: Text('X - đi trước')),
+              DropdownMenuItem(value: 'o', child: Text('O - đi sau')),
+            ],
+            onChanged: (value) => setState(() => _hostMark = value!),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<int?>(
+            value: _gameMinutes,
+            decoration: const InputDecoration(labelText: 'Thời gian tối đa một ván'),
+            items: const [
+              DropdownMenuItem(value: 3, child: Text('3 phút')),
+              DropdownMenuItem(value: 5, child: Text('5 phút')),
+              DropdownMenuItem(value: 10, child: Text('10 phút')),
+              DropdownMenuItem(value: null, child: Text('Không giới hạn')),
+            ],
+            onChanged: (value) => setState(() => _gameMinutes = value),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<int?>(
+            value: _turnSeconds,
+            decoration: const InputDecoration(labelText: 'Thời gian tối đa một lượt'),
+            items: const [
+              DropdownMenuItem(value: 15, child: Text('15 giây')),
+              DropdownMenuItem(value: 30, child: Text('30 giây')),
+              DropdownMenuItem(value: 60, child: Text('60 giây')),
+              DropdownMenuItem(value: null, child: Text('Không giới hạn')),
+            ],
+            onChanged: (value) => setState(() => _turnSeconds = value),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Huỷ'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(
+            RoomSettings(
+              gameOptions: {'hostMark': _hostMark},
+              gameTimeLimit: _gameMinutes == null
+                  ? null
+                  : Duration(minutes: _gameMinutes!),
+              turnTimeLimit: _turnSeconds == null
+                  ? null
+                  : Duration(seconds: _turnSeconds!),
+            ),
+          ),
+          child: const Text('Tạo phòng'),
+        ),
+      ],
+    );
   }
 }
 

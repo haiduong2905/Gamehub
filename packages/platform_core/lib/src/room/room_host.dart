@@ -27,6 +27,7 @@ class RoomHost {
     required this.gameId,
     required this.displayName,
     required this.hostPlayerId,
+    this.settings = const RoomSettings(),
     int? maxPlayers,
     this.rejoinGrace = const Duration(seconds: 30),
     Random? random,
@@ -56,6 +57,7 @@ class RoomHost {
   final String displayName;
   final PlayerId hostPlayerId;
   final int maxPlayers;
+  final RoomSettings settings;
 
   /// Thoi gian giu cho cho nguoi choi mat ket noi quay lai.
   final Duration rejoinGrace;
@@ -70,6 +72,9 @@ class RoomHost {
 
   RoomStatus _status = RoomStatus.waiting;
   GameSession? _session;
+  Timer? _gameTimer;
+  Timer? _turnTimer;
+  GameDeadlines? _deadlines;
   int? _port;
   bool _closed = false;
 
@@ -124,6 +129,8 @@ class RoomHost {
       timer.cancel();
     }
     _graceTimers.clear();
+  _gameTimer?.cancel();
+  _turnTimer?.cancel();
 
     for (final sub in _subscriptions) {
       await sub.cancel();
@@ -339,6 +346,8 @@ class RoomHost {
           state: session.viewFor(playerId),
           currentActors: session.currentActors,
           seatOrder: session.seatOrder,
+          gameDeadlineMillis: _deadlines?.gameDeadlineMillis,
+          turnDeadlineMillis: _deadlines?.turnDeadlineMillis,
         ),
       );
     }
@@ -403,9 +412,17 @@ class RoomHost {
       adapter: _registry.require(gameId),
       seatOrder: seatOrder,
       seed: _random.nextInt(1 << 32),
+      options: settings.gameOptions,
     );
     _session = session;
     _status = RoomStatus.playing;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _deadlines = deadlinesFrom(
+      settings: settings,
+      startedAtMillis: now,
+      turnStartedAtMillis: now,
+    );
+    _scheduleTimers();
 
     for (final slot in _slots) {
       _sendToPlayer(
@@ -416,6 +433,8 @@ class RoomHost {
           state: session.viewFor(slot.playerId),
           currentActors: session.currentActors,
           seatOrder: seatOrder,
+          gameDeadlineMillis: _deadlines?.gameDeadlineMillis,
+          turnDeadlineMillis: _deadlines?.turnDeadlineMillis,
         ),
       );
     }
@@ -454,6 +473,17 @@ class RoomHost {
       case ActionDuplicate():
         _sendState(playerId, session, lastActionId: message.actionId);
       case ActionApplied(:final finished):
+        if (!finished) {
+          _deadlines = deadlinesFrom(
+            settings: settings,
+            startedAtMillis: _deadlines?.gameDeadlineMillis == null
+                ? DateTime.now().millisecondsSinceEpoch
+                : DateTime.now().millisecondsSinceEpoch -
+                    settings.gameTimeLimit!.inMilliseconds,
+            turnStartedAtMillis: DateTime.now().millisecondsSinceEpoch,
+          );
+          _scheduleTimers();
+        }
         for (final slot in _slots) {
           _sendState(slot.playerId, session, lastActionId: message.actionId);
         }
@@ -473,12 +503,15 @@ class RoomHost {
         state: session.viewFor(playerId),
         currentActors: session.currentActors,
         lastActionId: lastActionId,
+          gameDeadlineMillis: _deadlines?.gameDeadlineMillis,
+          turnDeadlineMillis: _deadlines?.turnDeadlineMillis,
       ),
     );
   }
 
   void _finishGame(GameSession session) {
     _status = RoomStatus.finished;
+    _deadlines = null;
     // Van moi thi ai cung phai bam san sang lai.
     for (var i = 0; i < _slots.length; i++) {
       _slots[i] = _slots[i].copyWith(isReady: false);
@@ -493,6 +526,8 @@ class RoomHost {
         ),
       );
     }
+    _gameTimer?.cancel();
+    _turnTimer?.cancel();
     // Ket qua khong mang theo snapshot phong, nen phai gui rieng: neu khong,
     // client van thay trang thai san sang cu cua van truoc.
     _broadcast(
@@ -679,5 +714,34 @@ class RoomHost {
 
   void _emitSnapshot() {
     if (!_snapshots.isClosed) _snapshots.add(snapshot);
+  }
+
+  void _scheduleTimers() {
+    _gameTimer?.cancel();
+    _turnTimer?.cancel();
+    final gameDeadline = _deadlines?.gameDeadlineMillis;
+    final turnDeadline = _deadlines?.turnDeadlineMillis;
+    if (gameDeadline != null) {
+      _gameTimer = Timer(
+        Duration(milliseconds: gameDeadline - DateTime.now().millisecondsSinceEpoch),
+        () {
+          final session = _session;
+          if (session == null || _status != RoomStatus.playing) return;
+          session.abandon(reason: 'GAME_TIMEOUT');
+          _finishGame(session);
+        },
+      );
+    }
+    if (turnDeadline != null) {
+      _turnTimer = Timer(
+        Duration(milliseconds: turnDeadline - DateTime.now().millisecondsSinceEpoch),
+        () {
+          final session = _session;
+          if (session == null || _status != RoomStatus.playing) return;
+          session.timeout();
+          _finishGame(session);
+        },
+      );
+    }
   }
 }

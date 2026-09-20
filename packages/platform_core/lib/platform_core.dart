@@ -16,6 +16,7 @@ export 'src/protocol/messages.dart';
 export 'src/room/room_client.dart';
 export 'src/room/room_host.dart';
 export 'src/room/room_models.dart';
+export 'src/room/room_settings.dart';
 export 'src/session/game_session.dart';
 export 'src/transport/local_link.dart';
 export 'src/transport/loopback_transport.dart';

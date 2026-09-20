@@ -21,6 +21,8 @@ String messageForCode(String? code, {String? fallback}) {
     'CELL_TAKEN' => 'Ô này đã có người đánh.',
     'OUT_OF_BOARD' => 'Nước đi nằm ngoài bàn cờ.',
     'GAME_FINISHED' => 'Ván đấu đã kết thúc.',
+    'TURN_TIMEOUT' => 'Hết thời gian lượt. Đối thủ thắng.',
+    'GAME_TIMEOUT' => 'Hết thời gian ván đấu.',
     'STALE_STATE' => 'Bàn cờ vừa thay đổi, hãy thử lại.',
     'NOT_HOST' => 'Chỉ người tạo phòng mới bắt đầu được ván đấu.',
     'NOT_ENOUGH_PLAYERS' => 'Chưa đủ người chơi.',

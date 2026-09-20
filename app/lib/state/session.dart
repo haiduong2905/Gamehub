@@ -97,6 +97,7 @@ class SessionController extends Notifier<SessionState> {
   Future<void> createRoom({
     required GameId gameId,
     required String displayName,
+    RoomSettings settings = const RoomSettings(),
     int? maxPlayers,
   }) async {
     final identity = ref.read(identityProvider).valueOrNull;
@@ -126,6 +127,7 @@ class SessionController extends Notifier<SessionState> {
         gameId: gameId,
         displayName: displayName,
         hostPlayerId: identity.playerId,
+        settings: settings,
         maxPlayers: maxPlayers,
       );
       _host = host;
