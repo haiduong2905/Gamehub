@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:game_audio/game_audio.dart';
 
 import '../state/identity.dart';
 import '../transport/lan/network_interfaces.dart';
@@ -64,6 +65,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           FilledButton(onPressed: _save, child: const Text('Lưu')),
           const SizedBox(height: 32),
           Text(
+            'Âm thanh',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const _AudioSettings(),
+          const SizedBox(height: 32),
+          Text(
             'Chẩn đoán mạng',
             style: theme.textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w600,
@@ -88,6 +98,74 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Bật tắt và chỉnh âm lượng cho mọi game.
+///
+/// Đọc thẳng từ [GameAudioScope] chứ không qua Riverpod: cùng một nguồn với
+/// nút loa trong ván đấu, nên tắt ở đâu cũng thấy ngay ở chỗ kia.
+class _AudioSettings extends StatelessWidget {
+  const _AudioSettings();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final controller = GameAudioScope.maybeOf(context);
+    if (controller == null) return const SizedBox.shrink();
+    final settings = controller.settings;
+
+    return Column(
+      children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: settings.effectsEnabled,
+          onChanged: (value) => controller.setEffectsEnabled(enabled: value),
+          title: const Text('Hiệu ứng trong game'),
+          subtitle: const Text('Tiếng đặt quân, ăn quân, kết thúc ván.'),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          value: settings.musicEnabled,
+          onChanged: (value) => controller.setMusicEnabled(enabled: value),
+          title: const Text('Nhạc nền'),
+          subtitle: const Text('Chạy trong suốt ván đấu.'),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const Icon(Icons.volume_down_rounded),
+            Expanded(
+              child: Slider(
+                value: settings.volume,
+                max: 1,
+                divisions: 20,
+                label: '${(settings.volume * 100).round()}%',
+                onChanged: settings.silent ? null : controller.setVolume,
+              ),
+            ),
+            SizedBox(
+              width: 44,
+              child: Text(
+                '${(settings.volume * 100).round()}%',
+                textAlign: TextAlign.end,
+                style: theme.textTheme.bodyMedium,
+              ),
+            ),
+          ],
+        ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Tính trên âm lượng media của thiết bị: để 100% là đúng bằng mức '
+            'bạn đang đặt trên máy, kéo xuống khi muốn game nhỏ hơn.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

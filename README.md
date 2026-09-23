@@ -25,11 +25,22 @@ packages/platform_core/     PURE DART — không Flutter, không dart:io
   game/                     GameDefinition, GameRegistry, GameView
   transport/                Transport/Discovery trừu tượng + LoopbackTransport
 
+packages/game_audio/        Âm thanh dùng chung cho MỌI game
+  AudioSettings             bật/tắt hiệu ứng, bật/tắt nhạc nền, âm lượng
+  GameAudioScope            đưa cài đặt xuống cả cây widget
+  GameSoundPlayer           phát tiếng ngắn, tôn trọng cài đặt
+  GameMusic                 nhạc nền chạy khi widget còn trên màn hình
+  GameAudioButton           nút loa đặt trong AppBar màn ván đấu
+  bin/generate_music.dart   sinh assets/music/ambient.wav
+
 packages/game_tictactoe/    Cờ caro: src/logic/ (pure Dart) + src/ui/ (Flutter)
+  src/logic/*_ai.dart       Máy đánh: tìm kiếm alpha-beta có hạn giờ
+  assets/sounds/            Tiếng bút, sinh bằng bin/generate_sounds.dart
+  bin/benchmark_ai.dart     Đo tốc độ và thang độ khó của máy
 
 app/                        Flutter app
   lib/transport/lan/        WebSocket + bonsoir + chọn IP + quyền mạng
-  lib/state/                Riverpod
+  lib/state/                Riverpod (gồm state/audio.dart: lưu cài đặt âm thanh)
   lib/ui/                   Màn hình
 ```
 
@@ -37,9 +48,15 @@ Chiều phụ thuộc — **có test tự động canh giữ**:
 
 ```
 platform_core  →  (không phụ thuộc gì)
-game_tictactoe →  platform_core
-app            →  cả hai
+game_audio     →  flutter + audioplayers
+game_*         →  platform_core, game_audio
+app            →  tất cả
 ```
+
+`game_audio` tồn tại vì cài đặt âm thanh là thứ **cả app lẫn từng game đều
+cần đọc**, mà hai bên không được biết nhau: game không phụ thuộc vào `app`,
+còn `platform_core` là pure Dart nên không chứa được `Widget` hay plugin.
+`app` sở hữu việc **lưu** cài đặt; package chỉ giữ giá trị đang dùng.
 
 ---
 
@@ -170,6 +187,7 @@ Cách lặp nhanh nhất khi phát triển: chạy **một bản Windows làm ch
 | Phát hiện mất kết nối bằng `WebSocket.pingInterval` | `dart:io` đã tự ping/pong và đóng socket khi không có phản hồi — đúng thứ bắt được half-open lúc ai đó rớt Wi-Fi. Timer tự viết 3 giây vừa tốn pin vừa bị Doze xử lý. |
 | `AppLifecycleState.paused` **không** rời phòng | `paused` bắn ra cả khi kéo thanh thông báo hay có cuộc gọi đến. Đá người chơi ra vì việc đó là sai. |
 | TXT record chỉ chứa dữ liệu bất biến | `NsdManager` trước API 34 không sửa được TXT; muốn đổi phải huỷ rồi đăng ký lại, phòng sẽ nhấp nháy mà số liệu vẫn sai vì mDNS cache theo TTL. |
+| Chỉ xin `NEARBY_WIFI_DEVICES` từ **Android 13 (API 33)** trở lên | Dưới mốc đó quyền này chưa tồn tại, mà `permission_handler` lại trả về `denied` chứ không phải `granted` — máy Android 12 sẽ tự chặn chính mình và người dùng vào Cài đặt cũng không tìm thấy mục nào để bật. Số phiên bản đọc bằng `device_info_plus`. |
 
 Chi tiết ở [docs/architecture/decisions/](docs/architecture/decisions/).
 
@@ -179,8 +197,32 @@ Chi tiết ở [docs/architecture/decisions/](docs/architecture/decisions/).
 
 1. Tạo package `packages/game_<tên>/`.
 2. `lib/src/logic/` implement `GameDefinition` — **pure Dart, không import Flutter**.
-3. `lib/src/ui/` vẽ bàn cờ từ `GameView`.
+3. `lib/src/ui/` vẽ bàn cờ từ `GameView`, vẽ icon bằng `CustomPaint`, và dựng
+   màn hình chơi với máy nếu game có máy đánh.
 4. Thêm một `CatalogEntry` vào [app/lib/state/catalog.dart](app/lib/state/catalog.dart).
+
+`CatalogEntry` cầm hàm dựng widget chứ không cầm `gameId` để `app` tự phân
+nhánh:
+
+| Trường | Do game cung cấp |
+|---|---|
+| `buildBoard(view)` | bàn cờ |
+| `buildIcon(size)` | icon của game |
+| `buildLocalGame()` | màn chơi với máy — `null` nếu game chưa có máy đánh |
+
+**Âm thanh thì không phải khai báo gì.** Ván đấu qua mạng đã được màn phòng của
+`app` bọc sẵn `GameMusic` và gắn sẵn nút loa, nên game mới có nhạc nền ngay.
+Hai việc game tự làm:
+
+- muốn có tiếng riêng thì dùng `GameSoundPlayer` (lấy controller bằng
+  `GameAudioScope.readOf(context)`) — **không** gọi thẳng `audioplayers`, vì
+  gọi thẳng là bỏ qua nút tắt tiếng của người dùng;
+- màn chơi với máy của game thì tự bọc `GameMusic` và thêm `GameAudioButton`
+  vào `AppBar`, vì màn đó do game dựng chứ không phải `app`.
+
+Nhờ vậy tên game chỉ xuất hiện ở đúng `catalog.dart`. Thấy `switch (gameId)`
+trong `app/lib/ui/` là đã sai: cách sửa là thêm một trường hàm vào
+`CatalogEntry`, không phải thêm một nhánh `case`.
 
 **Không được sửa `platform_core` hay `app/lib/transport/`.** Nếu phải sửa thì
 kiến trúc đã sai — xem mục 35 của bản spec.

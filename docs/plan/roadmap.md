@@ -20,7 +20,7 @@ Ràng buộc đã chốt:
 |---|---|
 | Framework | Flutter (Dart) |
 | Loại game | **Chỉ turn-based** |
-| Số người/room | 2–4 |
+| Số người/room | Theo từng game (`minPlayers`/`maxPlayers`); core hiện hỗ trợ 2–4 |
 | iOS | **Chưa có Mac / Apple Developer account** → MVP Android-only |
 | Internet | Không có trong MVP |
 
@@ -121,7 +121,7 @@ d:\Game\
 │  │  ├─ game\                     # GameDefinition, GameRegistry, GameResult
 │  │  └─ transport\                # abstract Transport, DiscoveryService + LoopbackTransport
 │  ├─ game_tictactoe\              # Flutter package: lib/src/logic/ (pure) + lib/src/ui/
-│  └─ game_dots_and_boxes\         # game #2 (Phase 6)
+│  └─ game_xiangqi\                # cờ tướng, 2 người
 └─ app\
    ├─ lib\transport\lan\           # LanTransport: ws + bonsoir + chọn interface + permission
    └─ lib\...                      # UI, Riverpod, composition root
@@ -315,12 +315,14 @@ WebSocket + bonsoir + lọc network interface + manual join `IP:port` + `LocalNe
 ### Phase 6 — Disconnect / rejoin / lifecycle (2 ngày)
 Tách riêng vì đây là nơi bug hại nhất và khó tái hiện nhất. Chạy đủ checklist §23.
 
-### Phase 7 — Game #2 = **Dots and Boxes** (0.5–1 ngày)
-**Nghiệm thu kiến trúc: chỉ được tạo package mới + đăng ký 2 dòng ở `main.dart`, `git diff` KHÔNG chạm `platform_core` và `app/lib/transport/`.** Phải sửa core → kiến trúc sai theo §35, quay lại sửa trước khi làm tiếp.
+### Phase 7 — Game #2 = **Cờ tướng** (2 người)
+Số người trong phòng lấy từ `minPlayers`/`maxPlayers` của game. Cờ tướng có
+package và mục trong `GameCatalog`; cần hoàn thiện luật, UI và kiểm thử trước
+khi nghiệm thu. Game mới không được yêu cầu sửa `platform_core` hoặc tầng mạng
+chỉ để đăng ký game (§35).
 
-Vì sao Dots and Boxes chứ không phải cờ vua: mục đích của game #2 là **đo chi phí cắm thêm game**, không phải để có game hay. Cờ vua có bề mặt luật khổng lồ (nhập thành, phong hậu, bắt tốt qua đường, chiếu hết/hoà cờ) — ngốn cả tuần mà không nói thêm gì về kiến trúc.
-
-**Và Dots and Boxes chơi được 2–4 người.** Đây là lý do quan trọng hơn: bạn chọn room 2–4 người, nhưng cờ caro và cờ vua đều đúng 2 người → toàn bộ nhánh N>2 (xoay lượt vòng tròn, một người rớt khi còn 3 người, quản lý chỗ ngồi) sẽ là **code chết chưa từng chạy một lần nào**, và chắc chắn hỏng đúng lúc cần. Dots and Boxes bắt nhánh đó phải chạy thật, với luật đơn giản và không có thông tin ẩn.
+Nhánh 3–4 người vẫn cần kiểm chứng riêng trên thiết bị thật khi có game hỗ trợ
+số người đó; không gắn mục tiêu này với cờ tướng.
 
 ### Phase 8 — Docs kiến trúc + ADR (0.5 ngày)
 Viết ngược từ code đã chạy: `architecture/*`, và ADR-001 transport · ADR-002 host-authoritative · ADR-003 discovery (kèm lý do loại UDP broadcast vì entitlement iOS) · ADR-004 game interface · ADR-005 hoãn iOS.
@@ -349,7 +351,7 @@ Viết ngược từ code đã chạy: `architecture/*`, và ADR-001 transport �
 | AP isolation (chặn cả unicast) | Không cứu được — phải báo lỗi rõ ràng, không treo im lặng |
 | Quyền LAN bị từ chối → app "im lặng không chạy" | `LocalNetworkPermission` + màn hướng dẫn, test trong spike |
 | `bonsoir` lỗi trên thiết bị thật hoặc thiếu Windows | Interface `DiscoveryService` cho phép đổi `nsd`; desktop vẫn join tay được |
-| Nhánh 3–4 người không bao giờ chạy | Game #2 = Dots and Boxes (2–4 người) |
+| Nhánh 3–4 người chưa chạy thật | Kiểm chứng khi thêm game hỗ trợ 3–4 người |
 
 ---
 
@@ -361,7 +363,7 @@ Viết ngược từ code đã chạy: `architecture/*`, và ADR-001 transport �
 4. Harness 2 pane trên desktop — chơi hết một ván qua Loopback.
 5. Spike trên 2 máy Android thật, số đo ghi vào `docs/tech-spike/decision.md` (PASS/FAIL).
 6. Multi-device test theo §23 (Room · Game · Network), chạy liên tục từ Phase 5.
-7. **Nghiệm thu kiến trúc**: thêm Dots and Boxes mà `git diff` không chạm `platform_core` và `app/lib/transport/`.
+7. **Nghiệm thu kiến trúc**: hoàn thiện cờ tướng mà không phải sửa `platform_core` và `app/lib/transport/` chỉ vì game mới.
 8. CI: test chặn `platform_core` phụ thuộc Flutter/mạng, và chặn `game_*/lib/src/logic/` import Flutter.
 
 ---
@@ -371,15 +373,15 @@ Viết ngược từ code đã chạy: `architecture/*`, và ADR-001 transport �
 | Phase | Trạng thái |
 |---|---|
 | 0 — Brief tối thiểu | ✅ docs/product/product-brief.md + room-lifecycle.md |
-| 1 — TECH SPIKE | ⏳ **Chờ bạn**: cần 2 máy Android thật. Checklist ở docs/tech-spike/checklist.md |
+| 1 — TECH SPIKE | 🟡 Đã thử kết nối tốt trên 2 máy Android 13; còn thiếu điều kiện test và số đo để kết luận PASS. Xem docs/tech-spike/decision.md |
 | 2 — platform_core + Loopback | ✅ 50 test pass, analyze sạch |
 | 3 — game_tictactoe | ✅ 24 test pass (17 luật + 7 widget) |
 | 4 — UI trên Loopback | ✅ 5 test pass, cả app chạy trên LoopbackTransport |
-| 5 — LanTransport | ✅ Code xong (WebSocket + bonsoir + lọc IP + quyền). **Chưa chạy máy thật** |
+| 5 — LanTransport | ✅ Code xong (WebSocket + bonsoir + lọc IP + quyền). Đã thử kết nối tốt trên 2 máy Android 13; chưa ghi đủ phạm vi kiểm chứng |
 | 6 — Disconnect/rejoin | ✅ Logic xong + test; chưa kiểm chứng trên mạng thật |
-| 7 — Game #2 Dots and Boxes | ⬜ Chưa làm |
+| 7 — Game #2 Cờ tướng | 🟡 Đã có package và đăng ký trong catalog; cần rà luật, UI và kiểm thử |
 | 8 — Docs kiến trúc + ADR | ✅ overview, game-protocol, ADR-001..005 |
 
-Phase 1 được làm **sau** code thay vì trước, vì spike cần thiết bị thật mà
-hiện chưa có. Đổi lại toàn bộ logic đã được kiểm chứng qua LoopbackTransport,
-nên khi chạy máy thật, lỗi (nếu có) chắc chắn nằm ở tầng I/O.
+Phase 1 được bắt đầu **sau** code thay vì trước vì ban đầu chưa có thiết bị
+thật. Kết quả thử trên 2 máy Android 13 là tín hiệu tốt, nhưng Tech Spike chỉ
+PASS khi các điều kiện bắt buộc và số đo được ghi nhận theo checklist.

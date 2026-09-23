@@ -4,13 +4,36 @@ import 'package:game_tictactoe/game_tictactoe.dart';
 import 'package:game_xiangqi/game_xiangqi.dart';
 import 'package:platform_core/platform_core.dart';
 
+/// Lua chon ben choi cua chu phong. Y nghia option do game tu xu ly.
+class HostSideOption {
+  const HostSideOption({
+    required this.key,
+    required this.label,
+    required this.choices,
+  });
+
+  final String key;
+  final String label;
+  final List<HostSideChoice> choices;
+
+  String get defaultValue => choices.first.value;
+}
+
+class HostSideChoice {
+  const HostSideChoice(this.value, this.label);
+
+  final String value;
+  final String label;
+}
+
 /// Mot game trong Game Hub: luat choi + cach ve + thong tin cho danh sach.
 class CatalogEntry {
   const CatalogEntry({
     required this.definition,
     required this.buildBoard,
-    required this.icon,
-    required this.tagline,
+    required this.buildIcon,
+    this.buildLocalGame,
+    this.hostSideOption,
   });
 
   final GameAdapter definition;
@@ -21,10 +44,24 @@ class CatalogEntry {
   /// khop voi nhau qua `gameId`, nho vay core khong phai biet den Flutter.
   final Widget Function(GameView view) buildBoard;
 
-  final IconData icon;
+  /// Icon riêng của game, vẽ ở kích thước được yêu cầu.
+  ///
+  /// Là hàm dựng widget chứ không phải [IconData]: mỗi game tự vẽ icon của
+  /// mình trong package của nó (bàn cờ thu nhỏ, quân cờ thật), nên `app`
+  /// không phải chứa ảnh hay biết game đó trông thế nào.
+  final Widget Function(double size) buildIcon;
 
-  /// Mot dong mo ta ngan cho man danh sach game.
-  final String tagline;
+  /// Man hinh choi voi may, do chinh game dung.
+  ///
+  /// `null` nghia la game chua co may danh — khi do nut "Choi voi may" khong
+  /// hien ra, thay vi hien roi dan vao mot man hinh trong.
+  ///
+  /// Ly do day la mot ham chu khong phai mot `switch (gameId)` o tang UI:
+  /// rang buoc so 2 cam `app` biet trong hub co nhung game nao. `app` chi goi
+  /// ham nay, khong biet ben trong la game gi.
+  final Widget Function()? buildLocalGame;
+
+  final HostSideOption? hostSideOption;
 
   GameId get id => definition.id;
   String get name => definition.name;
@@ -32,8 +69,8 @@ class CatalogEntry {
   int get maxPlayers => definition.maxPlayers;
 
   String get playersLabel => minPlayers == maxPlayers
-      ? '$minPlayers nguoi'
-      : '$minPlayers-$maxPlayers nguoi';
+      ? '$minPlayers người chơi'
+      : '$minPlayers-$maxPlayers người chơi';
 }
 
 /// Danh muc game cua app.
@@ -74,14 +111,30 @@ final gameCatalogProvider = Provider<GameCatalog>((ref) {
       CatalogEntry(
         definition: registry.require('tic-tac-toe'),
         buildBoard: TicTacToeBoard.build,
-        icon: Icons.grid_4x4_rounded,
-        tagline: 'Nam quan thang hang la thang.',
+        buildIcon: (size) => TicTacToeIcon(size: size),
+        buildLocalGame: TicTacToeLocalGameScreen.new,
+        hostSideOption: const HostSideOption(
+          key: 'hostMark',
+          label: 'Bạn chơi',
+          choices: [
+            HostSideChoice('x', 'X - đi trước'),
+            HostSideChoice('o', 'O - đi sau'),
+          ],
+        ),
       ),
       CatalogEntry(
         definition: registry.require('xiangqi'),
         buildBoard: XiangqiBoard.build,
-        icon: Icons.sports_esports_rounded,
-        tagline: 'Cờ tướng 9x10, đối kháng theo luật truyền thống.',
+        buildIcon: (size) => XiangqiIcon(size: size),
+        buildLocalGame: XiangqiLocalGameScreen.new,
+        hostSideOption: const HostSideOption(
+          key: 'hostColor',
+          label: 'Bạn cầm quân',
+          choices: [
+            HostSideChoice('red', 'Đỏ - đi trước'),
+            HostSideChoice('black', 'Đen - đi sau'),
+          ],
+        ),
       ),
     ],
   );

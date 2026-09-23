@@ -8,6 +8,7 @@ import 'package:game_hub/theme.dart';
 import 'package:game_hub/ui/home_screen.dart';
 import 'package:game_hub/ui/room_screen.dart';
 import 'package:game_tictactoe/game_tictactoe.dart';
+import 'package:game_xiangqi/game_xiangqi.dart';
 import 'package:platform_core/platform_core.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -56,6 +57,95 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   group('luồng đầy đủ trên Loopback', () {
+    test('phòng cờ tướng: chủ chọn Đen, khách cầm Đỏ đi trước', () async {
+      final network = LoopbackNetwork();
+      final host = _container(network, playerId: 'host', nickname: 'Chủ');
+      final guest = _container(network, playerId: 'guest', nickname: 'Khách');
+      addTearDown(host.dispose);
+      addTearDown(guest.dispose);
+
+      await host.read(identityProvider.future);
+      await guest.read(identityProvider.future);
+      await host.read(sessionProvider.notifier).createRoom(
+            gameId: 'xiangqi',
+            displayName: 'Phòng cờ tướng',
+            settings: const RoomSettings(gameOptions: {'hostColor': 'black'}),
+          );
+      await settle();
+
+      final discovery = LoopbackDiscovery(network);
+      await discovery.startDiscovery(gameId: 'xiangqi');
+      final rooms = await discovery.rooms.first;
+      await guest.read(sessionProvider.notifier).joinRoom(
+            rooms.first.address,
+            gameId: 'xiangqi',
+          );
+      await settle();
+
+      host.read(sessionProvider.notifier).setReady(ready: true);
+      guest.read(sessionProvider.notifier).setReady(ready: true);
+      await settle();
+      host.read(sessionProvider.notifier).startGame();
+      await settle();
+
+      final hostClient = host.read(sessionProvider).client!;
+      final guestClient = guest.read(sessionProvider).client!;
+      expect(hostClient.phase, ClientPhase.playing);
+      expect(hostClient.currentActors, ['guest']);
+      expect(guestClient.currentActors, ['guest']);
+      final state = const XiangqiGame().decodeState(hostClient.gameState!);
+      expect(state.pieceColorOf('host'), XiangqiPieceColor.black);
+      expect(state.pieceColorOf('guest'), XiangqiPieceColor.red);
+
+      guest.read(sessionProvider.notifier).sendAction({'from': 54, 'to': 45});
+      await settle();
+      final stateOnHost = const XiangqiGame()
+          .decodeState(host.read(sessionProvider).client!.gameState!);
+      final stateOnGuest = const XiangqiGame()
+          .decodeState(guest.read(sessionProvider).client!.gameState!);
+      expect(stateOnHost.lastMove?.from, 54);
+      expect(stateOnHost.lastMove?.to, 45);
+      expect(stateOnGuest.lastMove?.from, 54);
+      expect(stateOnGuest.lastMove?.to, 45);
+      expect(stateOnHost.currentPlayer, 'host');
+
+      host.read(sessionProvider.notifier).sendAction({'from': 27, 'to': 36});
+      await settle();
+      guest.read(sessionProvider.notifier).sendAction({'from': 45, 'to': 36});
+      await settle();
+      final capturedOnHost = const XiangqiGame()
+          .decodeState(host.read(sessionProvider).client!.gameState!);
+      final capturedOnGuest = const XiangqiGame()
+          .decodeState(guest.read(sessionProvider).client!.gameState!);
+      expect(capturedOnHost.capturedPieces, [
+        const XiangqiPiece(
+            color: XiangqiPieceColor.black, type: XiangqiPieceType.pawn),
+      ]);
+      expect(capturedOnGuest.capturedPieces, capturedOnHost.capturedPieces);
+
+      for (var count = 1; count <= 3; count++) {
+        host.read(sessionProvider.notifier).sendAction({'type': 'offerDraw'});
+        await settle();
+        final offered = const XiangqiGame()
+            .decodeState(guest.read(sessionProvider).client!.gameState!);
+        expect(offered.drawOfferBy, 'host');
+        expect(guest.read(sessionProvider).client!.currentActors, ['guest']);
+
+        guest.read(sessionProvider.notifier).sendAction({'type': 'rejectDraw'});
+        await settle();
+        final rejected = const XiangqiGame()
+            .decodeState(host.read(sessionProvider).client!.gameState!);
+        expect(rejected.drawRejectionsOf('host'), count);
+      }
+      expect(host.read(sessionProvider).client!.result!.winners, ['guest']);
+      expect(guest.read(sessionProvider).client!.result!.reason,
+          'DRAW_REJECTED_THREE_TIMES');
+
+      await discovery.dispose();
+      await host.read(sessionProvider.notifier).leave();
+      await guest.read(sessionProvider.notifier).leave();
+    });
+
     test('hai người chơi trọn một ván cờ caro qua đúng tầng mạng của app',
         () async {
       final network = LoopbackNetwork();
@@ -172,8 +262,10 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Game Hub'), findsOneWidget);
-      expect(find.text('Co caro 20x20'), findsOneWidget);
+      expect(find.text('Xin chào'), findsOneWidget,
+          reason: 'đầu trang là avatar và tên người chơi');
+      expect(find.text('GAME SẴN CÓ'), findsOneWidget);
+      expect(find.text('Cờ caro'), findsWidgets);
       expect(find.textContaining('Wi-Fi'), findsWidgets);
     });
 
@@ -271,8 +363,9 @@ void main() {
       await tester.pump();
 
       expect(find.text('Lượt của bạn'), findsOneWidget);
-      expect(find.byType(AnimatedContainer), findsNWidgets(9),
-          reason: 'bàn cờ 3x3 có đúng 9 ô');
+      const cells = TicTacToeGame.boardSize * TicTacToeGame.boardSize;
+      expect(find.byType(AnimatedContainer), findsNWidgets(cells),
+          reason: 'mỗi ô bàn cờ là một AnimatedContainer');
 
       // Việc chạm ô rồi nước đi chạy qua host được kiểm tra ở hai chỗ khác,
       // mỗi chỗ đúng tầng của nó: test đầu file kiểm tra trọn ván qua đúng

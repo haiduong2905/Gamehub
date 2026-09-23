@@ -67,9 +67,9 @@ Chọn game → Tạo phòng → chờ người vào → cả hai sẵn sàng
 
 ## Điều đã biết là chưa chắc chắn
 
-- **Nhánh 3–4 người chưa từng chạy thật.** Cờ caro luôn 2 người. Code đã viết
-  cho N người và có test ở `platform_core`, nhưng game thật đầu tiên dùng tới
-  nó sẽ là game thứ hai (dự kiến Dots and Boxes, 2–4 người).
+- **Nhánh 3–4 người chưa từng chạy thật.** Số người phụ thuộc từng game. Cờ
+  caro và cờ tướng đều cần 2 người. Core đã có test cho N người; kiểm chứng
+  trên thiết bị thật sẽ thực hiện khi có game hỗ trợ 3–4 người.
 - **Android có thể đẩy traffic sang 4G** khi Wi-Fi không có Internet. Đây là
   rủi ro số một, phải đo trên máy thật —
   xem [checklist Tech Spike](../tech-spike/checklist.md).

@@ -1,5 +1,5 @@
 name: game_tictactoe
-description: Co caro 3x3 - game dau tien cam vao Game Hub.
+description: Co caro 20x20 - game dau tien cam vao Game Hub.
 version: 0.1.0
 publish_to: none
 
@@ -10,6 +10,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  audioplayers: ^6.8.1
+  game_audio:
+    path: ../game_audio
   platform_core:
     path: ../platform_core
 
@@ -17,3 +20,8 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
+
+flutter:
+  assets:
+    - assets/sounds/pen_x.wav
+    - assets/sounds/pen_o.wav

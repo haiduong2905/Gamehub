@@ -9,4 +9,7 @@
 library;
 
 export 'src/logic/tic_tac_toe.dart';
+export 'src/logic/tic_tac_toe_ai.dart';
 export 'src/ui/tic_tac_toe_board.dart';
+export 'src/ui/tic_tac_toe_local_game.dart';
+export 'src/ui/tic_tac_toe_icon.dart';

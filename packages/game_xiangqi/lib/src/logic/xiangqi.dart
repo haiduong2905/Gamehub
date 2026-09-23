@@ -57,15 +57,17 @@ class XiangqiPiece {
   bool get isBlack => color == XiangqiPieceColor.black;
 
   bool operator ==(Object other) =>
-      other is XiangqiPiece &&
-      other.color == color &&
-      other.type == type;
+      other is XiangqiPiece && other.color == color && other.type == type;
 
   @override
   int get hashCode => Object.hash(color, type);
 }
 
-class XiangqiMove {
+sealed class XiangqiAction {
+  const XiangqiAction();
+}
+
+class XiangqiMove extends XiangqiAction {
   const XiangqiMove({required this.from, required this.to});
 
   final int from;
@@ -75,23 +77,61 @@ class XiangqiMove {
   String toString() => 'XiangqiMove($from -> $to)';
 }
 
+class XiangqiDrawOffer extends XiangqiAction {
+  const XiangqiDrawOffer();
+}
+
+class XiangqiDrawAccept extends XiangqiAction {
+  const XiangqiDrawAccept();
+}
+
+class XiangqiDrawReject extends XiangqiAction {
+  const XiangqiDrawReject();
+}
+
+class XiangqiResign extends XiangqiAction {
+  const XiangqiResign();
+}
+
 class XiangqiState {
   const XiangqiState({
     required this.board,
     required this.players,
     required this.turnIndex,
+    this.redPlayerIndex = 0,
+    this.lastMove,
+    this.ply = 0,
+    this.lastMoveWasCapture = false,
+    this.capturedPieces = const [],
+    this.drawOfferBy,
+    this.drawRejections = const [0, 0],
+    this.terminalResult,
   });
 
   final List<XiangqiPiece?> board;
   final List<PlayerId> players;
   final int turnIndex;
+  final int redPlayerIndex;
+  final XiangqiMove? lastMove;
+  final int ply;
+  final bool lastMoveWasCapture;
+
+  /// Quân đã bị ăn, theo thứ tự thời gian; màu là phe bị mất quân.
+  final List<XiangqiPiece> capturedPieces;
+  final PlayerId? drawOfferBy;
+  final List<int> drawRejections;
+  final GameResult? terminalResult;
+
+  int drawRejectionsOf(PlayerId player) =>
+      drawRejections[players.indexOf(player)];
 
   PlayerId get currentPlayer => players[turnIndex];
 
   XiangqiPieceColor pieceColorOf(PlayerId player) {
-    if (player == 'red') return XiangqiPieceColor.red;
-    if (player == 'black') return XiangqiPieceColor.black;
-    throw StateError('Player $player khong phai red hay black');
+    final index = players.indexOf(player);
+    if (index == redPlayerIndex) return XiangqiPieceColor.red;
+    if (index >= 0) return XiangqiPieceColor.black;
+    throw StateError('Player $player khong thuoc van co');
   }
 
   PlayerId get oppositePlayer => players[(turnIndex + 1) % players.length];
@@ -99,113 +139,7 @@ class XiangqiState {
 
 enum XiangqiDifficulty { easy, medium, hard, expert }
 
-class XiangqiAi {
-  static final Random _random = Random();
-
-  static int? pickMove(
-    XiangqiState state,
-    PlayerId actor,
-    XiangqiDifficulty difficulty,
-  ) {
-    final legal = XiangqiGame.legalMovesFor(state, actor);
-    if (legal.isEmpty) return null;
-
-    switch (difficulty) {
-      case XiangqiDifficulty.easy:
-        return legal[_random.nextInt(legal.length)].to;
-      case XiangqiDifficulty.medium:
-        return _chooseMedium(state, actor, legal);
-      case XiangqiDifficulty.hard:
-        return _chooseHard(state, actor, legal, depth: 2);
-      case XiangqiDifficulty.expert:
-        return _chooseHard(state, actor, legal, depth: 3);
-    }
-  }
-
-  static int _chooseMedium(
-    XiangqiState state,
-    PlayerId actor,
-    List<XiangqiMove> legal,
-  ) {
-    final capture = legal.where((move) {
-      final target = state.board[move.to];
-      return target != null && target.color != XiangqiGame.colorOfPlayer(actor);
-    }).toList();
-    if (capture.isNotEmpty) return capture.first.to;
-
-    final checks = legal.where((move) {
-      final next = const XiangqiGame().apply(state, actor, move);
-      return XiangqiGame.isInCheck(next, XiangqiGame.opponentOf(actor));
-    }).toList();
-    if (checks.isNotEmpty) return checks.first.to;
-
-    return legal.first.to;
-  }
-
-  static int _chooseHard(
-    XiangqiState state,
-    PlayerId actor,
-    List<XiangqiMove> legal, {
-    required int depth,
-  }) {
-    var bestScore = -1 << 30;
-    XiangqiMove? bestMove;
-
-    for (final move in legal) {
-      final next = const XiangqiGame().apply(state, actor, move);
-      final score = _minimax(next, XiangqiGame.opponentOf(actor), depth - 1, -1 << 30, 1 << 30, false, actor);
-      if (score > bestScore) {
-        bestScore = score;
-        bestMove = move;
-      }
-    }
-
-    return bestMove?.to ?? legal.first.to;
-  }
-
-  static int _minimax(
-    XiangqiState state,
-    PlayerId actor,
-    int depth,
-    int alpha,
-    int beta,
-    bool maximizing,
-    PlayerId rootActor,
-  ) {
-if (depth == 0 || const XiangqiGame().isFinished(state)) {
-      return XiangqiGame.evaluate(state, rootActor);
-    }
-
-    final moves = XiangqiGame.legalMovesFor(state, actor);
-    if (moves.isEmpty) {
-      return XiangqiGame.isInCheck(state, actor)
-          ? -100000 + (5 - depth)
-          : 0;
-    }
-
-    if (maximizing) {
-      var best = alpha;
-      for (final move in moves) {
-        final next = const XiangqiGame().apply(state, actor, move);
-        final value = _minimax(next, XiangqiGame.opponentOf(actor), depth - 1, best, beta, false, rootActor);
-        if (value > best) best = value;
-        if (best >= beta) break;
-      }
-      return best;
-    }
-
-    var best = beta;
-    for (final move in moves) {
-      final next = const XiangqiGame().apply(state, actor, move);
-      final value = _minimax(next, XiangqiGame.opponentOf(actor), depth - 1, alpha, best, true, rootActor);
-      if (value < best) best = value;
-      if (alpha >= best) break;
-    }
-    return best;
-  }
-}
-
-class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
+class XiangqiGame extends GameDefinition<XiangqiState, XiangqiAction> {
   const XiangqiGame();
 
   static const boardRows = 10;
@@ -230,18 +164,24 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
     required int seed,
     Map<String, dynamic> options = const {},
   }) {
-    final safePlayers = players.length >= 2 ? players.take(2).toList(growable: false) : const ['red', 'black'];
+    if (players.length != 2 || players[0] == players[1]) {
+      throw ArgumentError.value(
+          players, 'players', 'Co tuong can dung 2 nguoi khac nhau');
+    }
     final board = List<XiangqiPiece?>.filled(totalCells, null, growable: false);
     _placeInitialPieces(board, XiangqiPieceColor.black, 0);
     _placeInitialPieces(board, XiangqiPieceColor.red, 9);
+    final redPlayerIndex = options['hostColor'] == 'black' ? 1 : 0;
     return XiangqiState(
       board: board,
-      players: List<PlayerId>.unmodifiable(safePlayers),
-      turnIndex: 0,
+      players: List<PlayerId>.unmodifiable(players),
+      turnIndex: redPlayerIndex,
+      redPlayerIndex: redPlayerIndex,
     );
   }
 
-  static void _placeInitialPieces(List<XiangqiPiece?> board, XiangqiPieceColor color, int rowBase) {
+  static void _placeInitialPieces(
+      List<XiangqiPiece?> board, XiangqiPieceColor color, int rowBase) {
     final isRed = color == XiangqiPieceColor.red;
     final backRankRow = isRed ? 9 : 0;
     final cannonRow = isRed ? 7 : 2;
@@ -260,31 +200,68 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
     ];
 
     for (var col = 0; col < boardColumns; col++) {
-      board[backRankRow * boardColumns + col] = XiangqiPiece(color: color, type: pieces[col]);
+      board[backRankRow * boardColumns + col] =
+          XiangqiPiece(color: color, type: pieces[col]);
     }
 
-    board[(cannonRow * boardColumns) + 1] = XiangqiPiece(color: color, type: XiangqiPieceType.cannon);
-    board[(cannonRow * boardColumns) + 7] = XiangqiPiece(color: color, type: XiangqiPieceType.cannon);
+    board[(cannonRow * boardColumns) + 1] =
+        XiangqiPiece(color: color, type: XiangqiPieceType.cannon);
+    board[(cannonRow * boardColumns) + 7] =
+        XiangqiPiece(color: color, type: XiangqiPieceType.cannon);
 
     for (var col = 0; col < boardColumns; col += 2) {
-      board[(pawnRow * boardColumns) + col] = XiangqiPiece(color: color, type: XiangqiPieceType.pawn);
+      board[(pawnRow * boardColumns) + col] =
+          XiangqiPiece(color: color, type: XiangqiPieceType.pawn);
     }
   }
 
   @override
-  List<PlayerId> currentActors(XiangqiState state) =>
-      isFinished(state) ? const [] : [state.currentPlayer];
+  List<PlayerId> currentActors(XiangqiState state) => isFinished(state)
+      ? const []
+      : [
+          state.drawOfferBy == null
+              ? state.currentPlayer
+              : state.players
+                  .firstWhere((player) => player != state.drawOfferBy)
+        ];
 
   @override
   ValidationResult validate(
     XiangqiState state,
     PlayerId actor,
-    XiangqiMove action,
+    XiangqiAction action,
   ) {
+    if (isFinished(state)) {
+      return const ValidationResult.invalid('GAME_FINISHED');
+    }
+    if (state.drawOfferBy != null) {
+      if (actor == state.drawOfferBy) {
+        return const ValidationResult.invalid('WAITING_FOR_DRAW_RESPONSE');
+      }
+      return switch (action) {
+        XiangqiDrawAccept() ||
+        XiangqiDrawReject() ||
+        XiangqiResign() =>
+          const ValidationResult.valid(),
+        _ => const ValidationResult.invalid('DRAW_RESPONSE_REQUIRED'),
+      };
+    }
     if (actor != state.currentPlayer) {
       return const ValidationResult.invalid('NOT_YOUR_TURN');
     }
-    if (action.from < 0 || action.to < 0 || action.from >= totalCells || action.to >= totalCells) {
+    if (action is XiangqiDrawOffer) {
+      return state.drawRejectionsOf(actor) < 3
+          ? const ValidationResult.valid()
+          : const ValidationResult.invalid('DRAW_LIMIT_REACHED');
+    }
+    if (action is XiangqiResign) return const ValidationResult.valid();
+    if (action is! XiangqiMove) {
+      return const ValidationResult.invalid('NO_DRAW_OFFER');
+    }
+    if (action.from < 0 ||
+        action.to < 0 ||
+        action.from >= totalCells ||
+        action.to >= totalCells) {
       return const ValidationResult.invalid('OUT_OF_BOARD');
     }
     if (action.from == action.to) {
@@ -295,7 +272,7 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
     if (piece == null) {
       return const ValidationResult.invalid('NO_PIECE');
     }
-    if (piece.color != colorOfPlayer(actor)) {
+    if (piece.color != state.pieceColorOf(actor)) {
       return const ValidationResult.invalid('WRONG_SIDE');
     }
 
@@ -306,13 +283,6 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
       return const ValidationResult.invalid('ILLEGAL_MOVE');
     }
 
-    final next = apply(state, actor, action);
-    if (kingsFaceEachOther(next)) {
-      return const ValidationResult.invalid('KINGS_FACE_EACH_OTHER');
-    }
-    if (isInCheck(next, actor)) {
-      return const ValidationResult.invalid('KING_IN_CHECK');
-    }
     return const ValidationResult.valid();
   }
 
@@ -320,11 +290,46 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
   XiangqiState apply(
     XiangqiState state,
     PlayerId actor,
-    XiangqiMove action,
+    XiangqiAction action,
   ) {
+    switch (action) {
+      case XiangqiDrawOffer():
+        return XiangqiState(
+          board: state.board,
+          players: state.players,
+          turnIndex: state.turnIndex,
+          redPlayerIndex: state.redPlayerIndex,
+          lastMove: state.lastMove,
+          ply: state.ply,
+          lastMoveWasCapture: state.lastMoveWasCapture,
+          capturedPieces: state.capturedPieces,
+          drawOfferBy: actor,
+          drawRejections: state.drawRejections,
+        );
+      case XiangqiDrawAccept():
+        return _withDecision(state,
+            result: const GameResult.draw(reason: 'DRAW_AGREED'));
+      case XiangqiDrawReject():
+        final counts = List<int>.of(state.drawRejections);
+        final offerer = state.drawOfferBy!;
+        counts[state.players.indexOf(offerer)]++;
+        return _withDecision(state,
+            drawRejections: counts,
+            result: counts[state.players.indexOf(offerer)] == 3
+                ? GameResult.win(actor, reason: 'DRAW_REJECTED_THREE_TIMES')
+                : null);
+      case XiangqiResign():
+        return _withDecision(state,
+            result: GameResult.win(
+                state.players.firstWhere((player) => player != actor),
+                reason: 'RESIGN'));
+      case XiangqiMove():
+        break;
+    }
     final board = List<XiangqiPiece?>.from(state.board, growable: false);
     final piece = board[action.from];
     if (piece == null) throw StateError('Khong co quan o diem bat dau');
+    final captured = board[action.to];
     board[action.from] = null;
     board[action.to] = piece;
     final nextPlayers = List<PlayerId>.from(state.players, growable: false);
@@ -333,11 +338,40 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
       board: board,
       players: nextPlayers,
       turnIndex: nextTurnIndex,
+      redPlayerIndex: state.redPlayerIndex,
+      lastMove: action,
+      ply: state.ply + 1,
+      lastMoveWasCapture: captured != null,
+      capturedPieces: captured == null
+          ? state.capturedPieces
+          : [...state.capturedPieces, captured],
+      drawRejections: state.drawRejections,
     );
   }
 
+  XiangqiState _withDecision(
+    XiangqiState state, {
+    List<int>? drawRejections,
+    GameResult? result,
+  }) =>
+      XiangqiState(
+        board: state.board,
+        players: state.players,
+        turnIndex: state.turnIndex,
+        redPlayerIndex: state.redPlayerIndex,
+        lastMove: state.lastMove,
+        ply: state.ply,
+        lastMoveWasCapture: state.lastMoveWasCapture,
+        capturedPieces: state.capturedPieces,
+        drawRejections: drawRejections ?? state.drawRejections,
+        terminalResult: result,
+      );
+
   @override
   bool isFinished(XiangqiState state) {
+    if (state.terminalResult != null) return true;
+    if (_findKing(state.board, XiangqiPieceColor.red) == null ||
+        _findKing(state.board, XiangqiPieceColor.black) == null) return true;
     final current = state.currentPlayer;
     final moves = legalMovesFor(state, current);
     if (moves.isEmpty && isInCheck(state, current)) return true;
@@ -347,11 +381,20 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
 
   @override
   GameResult getResult(XiangqiState state) {
+    if (state.terminalResult != null) return state.terminalResult!;
+    if (_findKing(state.board, XiangqiPieceColor.red) == null) {
+      return GameResult.win(state.players[1 - state.redPlayerIndex],
+          reason: 'KING_CAPTURED');
+    }
+    if (_findKing(state.board, XiangqiPieceColor.black) == null) {
+      return GameResult.win(state.players[state.redPlayerIndex],
+          reason: 'KING_CAPTURED');
+    }
     final current = state.currentPlayer;
-    final opponent = opponentOf(current);
+    final opponent = state.oppositePlayer;
     if (legalMovesFor(state, current).isEmpty) {
       if (isInCheck(state, current)) {
-        return GameResult.win(opponent);
+        return GameResult.win(opponent, reason: 'CHECKMATE');
       }
       return const GameResult.draw();
     }
@@ -360,9 +403,25 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
 
   @override
   Map<String, dynamic> encodeState(XiangqiState state) => {
-        'board': state.board.map((piece) => piece == null ? null : {'color': piece.color.name, 'type': piece.type.name}).toList(),
+        'board': state.board
+            .map((piece) => piece == null
+                ? null
+                : {'color': piece.color.name, 'type': piece.type.name})
+            .toList(),
         'players': state.players,
         'turnIndex': state.turnIndex,
+        'redPlayerIndex': state.redPlayerIndex,
+        if (state.lastMove != null) 'lastMove': encodeAction(state.lastMove!),
+        'ply': state.ply,
+        'lastMoveWasCapture': state.lastMoveWasCapture,
+        'capturedPieces': state.capturedPieces
+            .map(
+                (piece) => {'color': piece.color.name, 'type': piece.type.name})
+            .toList(),
+        if (state.drawOfferBy != null) 'drawOfferBy': state.drawOfferBy,
+        'drawRejections': state.drawRejections,
+        if (state.terminalResult != null)
+          'terminalResult': state.terminalResult!.toJson(),
       };
 
   @override
@@ -374,37 +433,65 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
       if (value == null) continue;
       final map = value as Map<String, dynamic>;
       board[i] = XiangqiPiece(
-        color: XiangqiPieceColor.values.firstWhere((c) => c.name == map['color']),
+        color:
+            XiangqiPieceColor.values.firstWhere((c) => c.name == map['color']),
         type: XiangqiPieceType.values.firstWhere((t) => t.name == map['type']),
       );
     }
     return XiangqiState(
       board: board,
-      players: (json['players'] as List<dynamic>? ?? const ['red', 'black']).map((e) => e as String).toList(growable: false),
+      players: (json['players'] as List<dynamic>? ?? const ['red', 'black'])
+          .map((e) => e as String)
+          .toList(growable: false),
       turnIndex: json['turnIndex'] as int? ?? 0,
+      redPlayerIndex: json['redPlayerIndex'] as int? ?? 0,
+      lastMove: json['lastMove'] is Map<String, dynamic>
+          ? decodeAction(json['lastMove'] as Map<String, dynamic>)
+              as XiangqiMove
+          : null,
+      ply: json['ply'] as int? ?? 0,
+      lastMoveWasCapture: json['lastMoveWasCapture'] as bool? ?? false,
+      capturedPieces:
+          (json['capturedPieces'] as List<dynamic>? ?? const []).map((value) {
+        final piece = value as Map<String, dynamic>;
+        return XiangqiPiece(
+          color: XiangqiPieceColor.values
+              .firstWhere((color) => color.name == piece['color']),
+          type: XiangqiPieceType.values
+              .firstWhere((type) => type.name == piece['type']),
+        );
+      }).toList(growable: false),
+      drawOfferBy: json['drawOfferBy'] as String?,
+      drawRejections: (json['drawRejections'] as List<dynamic>? ?? const [0, 0])
+          .cast<int>(),
+      terminalResult: json['terminalResult'] is Map<String, dynamic>
+          ? GameResult.fromJson(json['terminalResult'] as Map<String, dynamic>)
+          : null,
     );
   }
 
   @override
-  Map<String, dynamic> encodeAction(XiangqiMove action) => {
-        'from': action.from,
-        'to': action.to,
+  Map<String, dynamic> encodeAction(XiangqiAction action) => switch (action) {
+        XiangqiMove() => {'from': action.from, 'to': action.to},
+        XiangqiDrawOffer() => {'type': 'offerDraw'},
+        XiangqiDrawAccept() => {'type': 'acceptDraw'},
+        XiangqiDrawReject() => {'type': 'rejectDraw'},
+        XiangqiResign() => {'type': 'resign'},
       };
 
   @override
-  XiangqiMove decodeAction(Map<String, dynamic> json) => XiangqiMove(
-        from: json['from'] as int,
-        to: json['to'] as int,
-      );
-
-  static PlayerId opponentOf(PlayerId player) =>
-      player == 'red' ? 'black' : 'red';
-
-  static XiangqiPieceColor colorOfPlayer(PlayerId player) =>
-      player == 'red' ? XiangqiPieceColor.red : XiangqiPieceColor.black;
+  XiangqiAction decodeAction(Map<String, dynamic> json) =>
+      switch (json['type']) {
+        'offerDraw' => const XiangqiDrawOffer(),
+        'acceptDraw' => const XiangqiDrawAccept(),
+        'rejectDraw' => const XiangqiDrawReject(),
+        'resign' => const XiangqiResign(),
+        null => XiangqiMove(from: json['from'] as int, to: json['to'] as int),
+        _ => throw FormatException('Unknown Xiangqi action: ${json['type']}'),
+      };
 
   static List<XiangqiMove> legalMovesFor(XiangqiState state, PlayerId actor) {
-    final currentColor = colorOfPlayer(actor);
+    final currentColor = state.pieceColorOf(actor);
     final moves = <XiangqiMove>[];
     for (var index = 0; index < state.board.length; index++) {
       final piece = state.board[index];
@@ -434,7 +521,8 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
         for (final (dr, dc) in const [(0, 1), (0, -1), (1, 0), (-1, 0)]) {
           final nextRow = row + dr;
           final nextCol = col + dc;
-          if (_insidePalace(nextRow, nextCol, piece.color) && _isEmptyOrEnemy(state, nextRow, nextCol, piece.color)) {
+          if (_insidePalace(nextRow, nextCol, piece.color) &&
+              _isEmptyOrEnemy(state, nextRow, nextCol, piece.color)) {
             moves.add(XiangqiMove(from: from, to: _cell(nextRow, nextCol)));
           }
         }
@@ -442,7 +530,8 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
         for (final (dr, dc) in const [(1, 1), (1, -1), (-1, 1), (-1, -1)]) {
           final nextRow = row + dr;
           final nextCol = col + dc;
-          if (_insidePalace(nextRow, nextCol, piece.color) && _isEmptyOrEnemy(state, nextRow, nextCol, piece.color)) {
+          if (_insidePalace(nextRow, nextCol, piece.color) &&
+              _isEmptyOrEnemy(state, nextRow, nextCol, piece.color)) {
             moves.add(XiangqiMove(from: from, to: _cell(nextRow, nextCol)));
           }
         }
@@ -460,12 +549,21 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
           }
         }
       case XiangqiPieceType.knight:
-        for (final (dr, dc) in const [(2, 1), (2, -1), (-2, 1), (-2, -1), (1, 2), (1, -2), (-1, 2), (-1, -2)]) {
+        for (final (dr, dc) in const [
+          (2, 1),
+          (2, -1),
+          (-2, 1),
+          (-2, -1),
+          (1, 2),
+          (1, -2),
+          (-1, 2),
+          (-1, -2)
+        ]) {
           final nextRow = row + dr;
           final nextCol = col + dc;
           if (!_insideBoard(nextRow, nextCol)) continue;
-          final midRow = row + (dr ~/ 2);
-          final midCol = col + (dc ~/ 2);
+          final midRow = row + (dr.abs() == 2 ? dr.sign : 0);
+          final midCol = col + (dc.abs() == 2 ? dc.sign : 0);
           if (state.board[_cell(midRow, midCol)] != null) continue;
           if (_isEmptyOrEnemy(state, nextRow, nextCol, piece.color)) {
             moves.add(XiangqiMove(from: from, to: _cell(nextRow, nextCol)));
@@ -522,13 +620,15 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
       case XiangqiPieceType.pawn:
         final dir = piece.color == XiangqiPieceColor.red ? -1 : 1;
         final nextRow = row + dir;
-        if (_insideBoard(nextRow, col) && _isEmptyOrEnemy(state, nextRow, col, piece.color)) {
+        if (_insideBoard(nextRow, col) &&
+            _isEmptyOrEnemy(state, nextRow, col, piece.color)) {
           moves.add(XiangqiMove(from: from, to: _cell(nextRow, col)));
         }
         if (_hasCrossedRiver(piece.color, row)) {
           for (final dc in [-1, 1]) {
             final nextCol = col + dc;
-            if (_insideBoard(row, nextCol) && _isEmptyOrEnemy(state, row, nextCol, piece.color)) {
+            if (_insideBoard(row, nextCol) &&
+                _isEmptyOrEnemy(state, row, nextCol, piece.color)) {
               moves.add(XiangqiMove(from: from, to: _cell(row, nextCol)));
             }
           }
@@ -555,7 +655,8 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
     return color == XiangqiPieceColor.red ? row <= 4 : row >= 5;
   }
 
-  static bool _isEmptyOrEnemy(XiangqiState state, int row, int col, XiangqiPieceColor color) {
+  static bool _isEmptyOrEnemy(
+      XiangqiState state, int row, int col, XiangqiPieceColor color) {
     final target = state.board[_cell(row, col)];
     if (target == null) return true;
     return target.color != color;
@@ -564,9 +665,10 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
   static int _cell(int row, int col) => row * boardColumns + col;
 
   static bool isInCheck(XiangqiState state, PlayerId actor) {
-    final color = colorOfPlayer(actor);
+    final color = state.pieceColorOf(actor);
     final kingIndex = _findKing(state.board, color);
-    if (kingIndex == null) return false;
+    if (kingIndex == null) return true;
+    if (kingsFaceEachOther(state)) return true;
     final row = kingIndex ~/ boardColumns;
     final col = kingIndex % boardColumns;
     for (var i = 0; i < state.board.length; i++) {
@@ -602,7 +704,9 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
   static int? _findKing(List<XiangqiPiece?> board, XiangqiPieceColor color) {
     for (var i = 0; i < board.length; i++) {
       final piece = board[i];
-      if (piece != null && piece.type == XiangqiPieceType.king && piece.color == color) return i;
+      if (piece != null &&
+          piece.type == XiangqiPieceType.king &&
+          piece.color == color) return i;
     }
     return null;
   }
@@ -624,7 +728,9 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
       case XiangqiPieceType.advisor:
         final dr = (targetRow - row).abs();
         final dc = (targetCol - col).abs();
-        return dr == 1 && dc == 1 && _insidePalace(targetRow, targetCol, piece.color);
+        return dr == 1 &&
+            dc == 1 &&
+            _insidePalace(targetRow, targetCol, piece.color);
       case XiangqiPieceType.bishop:
         final dr = (targetRow - row).abs();
         final dc = (targetCol - col).abs();
@@ -634,29 +740,32 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
         final midCol = col + (targetCol - col) ~/ 2;
         return state.board[_cell(midRow, midCol)] == null;
       case XiangqiPieceType.rook:
-        return _rayToTarget(state, from, targetRow, targetCol, piece.color, allowCannon: false, requireEmpty: false);
+        return _rayToTarget(state, from, targetRow, targetCol, piece.color,
+            allowCannon: false, requireEmpty: false);
       case XiangqiPieceType.knight:
         final dr = (targetRow - row).abs();
         final dc = (targetCol - col).abs();
         if (dr == 2 && dc == 1) {
-          final midRow = row + (targetRow - row) ~/ 2;
-          final midCol = col + (targetCol - col) ~/ 2;
+          final midRow = row + (targetRow - row).sign;
+          final midCol = col;
           return state.board[_cell(midRow, midCol)] == null;
         }
         if (dr == 1 && dc == 2) {
-          final midRow = row + (targetRow - row) ~/ 2;
-          final midCol = col + (targetCol - col) ~/ 2;
+          final midRow = row;
+          final midCol = col + (targetCol - col).sign;
           return state.board[_cell(midRow, midCol)] == null;
         }
         return false;
       case XiangqiPieceType.cannon:
-        return _rayToTarget(state, from, targetRow, targetCol, piece.color, allowCannon: true, requireEmpty: true);
+        return _rayToTarget(state, from, targetRow, targetCol, piece.color,
+            allowCannon: true, requireEmpty: true);
       case XiangqiPieceType.pawn:
         final dir = piece.color == XiangqiPieceColor.red ? -1 : 1;
         final sameColumn = col == targetCol;
         final oneForward = targetRow == row + dir;
         if (sameColumn && oneForward) return true;
-        if (_hasCrossedRiver(piece.color, row) && ((targetRow == row && (targetCol - col).abs() == 1))) return true;
+        if (_hasCrossedRiver(piece.color, row) &&
+            ((targetRow == row && (targetCol - col).abs() == 1))) return true;
         return false;
     }
   }
@@ -675,20 +784,22 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
     final dr = (targetRow - row).sign;
     final dc = (targetCol - col).sign;
     if (row == targetRow && col != targetCol) {
+      var blockers = 0;
       var c = col + dc;
       while (c != targetCol) {
-        if (state.board[_cell(row, c)] != null) return false;
+        if (state.board[_cell(row, c)] != null) blockers++;
         c += dc;
       }
-      return true;
+      return blockers == (allowCannon ? 1 : 0);
     }
     if (col == targetCol && row != targetRow) {
+      var blockers = 0;
       var r = row + dr;
       while (r != targetRow) {
-        if (state.board[_cell(r, col)] != null) return false;
+        if (state.board[_cell(r, col)] != null) blockers++;
         r += dr;
       }
-      return true;
+      return blockers == (allowCannon ? 1 : 0);
     }
     return false;
   }
@@ -699,9 +810,9 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiMove> {
       final piece = state.board[i];
       if (piece == null) continue;
       final value = pieceValue(piece);
-      score += piece.isRed ? value : -value;
+      score += piece.color == state.pieceColorOf(rootActor) ? value : -value;
     }
-    if (isInCheck(state, rootActor)) score += 2500;
+    if (isInCheck(state, rootActor)) score -= 2500;
     return score;
   }
 

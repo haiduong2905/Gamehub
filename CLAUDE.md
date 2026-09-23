@@ -23,7 +23,7 @@ quan.
 |---|---|
 | Framework | Flutter — chủ dự án quen nhất |
 | Loại game | **Chỉ turn-based** (caro, cờ vua, connect-four, dots and boxes) |
-| Số người/phòng | 2–4 |
+| Số người/phòng | Theo từng game (`minPlayers`/`maxPlayers`); hiện core hỗ trợ 2–4 |
 | iOS | **Hoãn** (chưa có Mac / Apple Developer account) — không phải bỏ |
 | Internet | Không có trong MVP |
 | Ngôn ngữ | Tài liệu và giao diện viết tiếng Việt |
@@ -91,8 +91,22 @@ Doze của Android xử lý.
 
 1. Tạo package `packages/game_<tên>/`.
 2. `lib/src/logic/` implement `GameDefinition` — **pure Dart**.
-3. `lib/src/ui/` vẽ bàn cờ từ `GameView`.
+3. `lib/src/ui/` vẽ bàn cờ từ `GameView`, vẽ icon của game (`CustomPaint`,
+   không dùng file ảnh — icon phải sắc nét từ 30px tới 90px), và nếu game có
+   máy đánh thì dựng luôn màn hình chơi với máy.
 4. Thêm một `CatalogEntry` vào [app/lib/state/catalog.dart](app/lib/state/catalog.dart).
+
+**Âm thanh không phải khai báo gì.** Ván qua mạng đã được màn phòng của `app`
+bọc `GameMusic` và gắn nút loa sẵn. Game chỉ cần: phát tiếng riêng qua
+`GameSoundPlayer` của [packages/game_audio](packages/game_audio) — **cấm gọi
+thẳng `audioplayers`**, vì gọi thẳng là bỏ qua nút tắt tiếng của người dùng —
+và màn chơi với máy của mình thì tự bọc `GameMusic` + thêm `GameAudioButton`.
+
+`CatalogEntry` cầm **hàm dựng widget**, không cầm `gameId` để `app` tự phân
+nhánh. Mọi màn hình riêng của game — bàn cờ, icon, chơi với máy — đều do package
+của game dựng, `app` chỉ gọi hàm. Thấy `switch (gameId)` hay `if (gameId == ...)`
+ở `app/lib/ui/` là đã vi phạm ràng buộc số 2; cách sửa luôn là thêm một trường
+hàm vào `CatalogEntry`, không phải thêm một nhánh `case`.
 
 **Chỉ được chạm 4 chỗ trên.** Nếu phải sửa `platform_core` hay
 `app/lib/transport/` thì kiến trúc đã sai (spec §35) — dừng lại, báo cáo, sửa
@@ -109,10 +123,32 @@ $env:PATH = "D:\flutter\bin;$env:PATH"
 ```
 
 ```bash
-cd packages/platform_core && dart test      # 52 test, dưới 1 giây
-cd packages/game_tictactoe && flutter test  # 24 test
-cd app && flutter test                      # 7 test
+cd packages/platform_core && dart test      # luật phòng + giao thức
+cd packages/game_audio && flutter test      # cài đặt âm thanh dùng chung
+cd packages/game_tictactoe && flutter test  # luật cờ caro + máy + bàn cờ
+cd packages/game_xiangqi && flutter test    # luật cờ tướng + bàn cờ
+cd app && flutter test                      # cả app trên LoopbackTransport
 ```
+
+Hai công cụ dòng lệnh, không phải test tự động:
+
+```bash
+cd packages/game_tictactoe
+dart run bin/benchmark_ai.dart       # máy nghĩ bao lâu, mức trên có thắng mức dưới
+dart run bin/generate_sounds.dart    # sinh lại assets/sounds/*.wav
+
+cd packages/game_audio
+dart run bin/generate_music.dart     # sinh lại nhạc nền assets/music/ambient.wav
+```
+
+Mọi âm thanh trong repo đều **tổng hợp bằng Dart**, không tải file ngoài: không
+vướng giấy phép, và muốn đổi thì sửa công thức rồi chạy lại. Nhạc nền phải lặp
+không nghe thấy mối nối — cách bảo đảm điều đó ghi trong chính file generator.
+
+Chạy `benchmark_ai` **mỗi khi đụng vào thuật toán của máy**. Hai con số phải
+giữ: thời gian nghĩ nằm trong ngân sách của từng mức, và mức trên phải thắng
+mức dưới **cả khi đi sau** — thắng khi đi trước không chứng minh được gì, vì cờ
+caro tự do vốn là thế thắng của bên đi trước.
 
 Toàn bộ luồng phòng + ván đấu test được **không cần thiết bị**, nhờ
 `LoopbackTransport`. Viết tính năng mới thì test bằng nó trước, đừng cắm máy thật.
@@ -128,16 +164,17 @@ trong `tester.runAsync`, nếu không test sẽ treo.
 
 ## Đang mở
 
-**Tech Spike chưa chạy** — cần 2 máy Android thật. Đây là gate mà spec §15 bắt
-buộc. Rủi ro số 1: Wi-Fi không có Internet khiến Android đẩy traffic sang 4G,
-làm TCP tới LAN không tới nơi. Nếu đúng vậy thì cần platform channel Kotlin gọi
-`bindProcessToNetwork`. Chi tiết ở [checklist](docs/tech-spike/checklist.md).
+**Đã thử kết nối trên 2 máy Android 13** — chủ dự án xác nhận kết nối rất tốt.
+Các điều kiện và số đo của Tech Spike chưa được ghi lại đầy đủ, nên chưa kết
+luận PASS cho toàn bộ checklist §15. Đặc biệt cần xác nhận kịch bản Wi-Fi không
+có Internet khi 4G bật, mất kết nối và khôi phục. Xem
+[kết quả hiện có](docs/tech-spike/decision.md) và
+[checklist](docs/tech-spike/checklist.md).
 
-**Nhánh 3–4 người chưa từng chạy thật** — cờ caro luôn 2 người. Code đã viết cho
-N người và có test ở `platform_core`, nhưng game thật đầu tiên dùng tới nó phải
-là game thứ hai. Vì vậy game #2 đã chốt là **Dots and Boxes (2–4 người)**, không
-phải cờ vua: mục đích của nó là đo chi phí cắm thêm game và chạy nhánh N>2, chứ
-không phải để có game hay.
+**Nhánh 3–4 người chưa từng chạy thật** — số người do từng game quy định. Cờ
+caro và cờ tướng đều dùng 2 người. Core có test cho N người, nhưng cần kiểm
+chứng trên thiết bị thật khi thêm một game hỗ trợ 3–4 người. Không ép game 2
+người thành 3–4 người chỉ để kiểm chứng platform.
 
 **`bonsoir_android` tự áp dụng Kotlin Gradle Plugin** — các bản Flutter sau sẽ
 không build được. Khi tới lúc đó: chờ bonsoir cập nhật, hoặc đổi sang `nsd`

@@ -4,8 +4,17 @@ import 'package:platform_core/platform_core.dart';
 
 const game = TicTacToeGame();
 
-TicTacToeState newGame({Map<String, dynamic> options = const {}}) =>
-  game.createInitialState(['x-player', 'o-player'], seed: 0, options: options);
+/// Suy ra toa do tu kich thuoc ban co thay vi viet so cung: ban co da doi tu
+/// 3x3 sang 10x10 roi 20x20, va moi lan doi lai co mot nhom test chet vi cac
+/// so 0, 10, 20 duoc go tay theo be rong cu.
+const size = TicTacToeGame.boardSize;
+
+int at(int row, int column) => row * size + column;
+
+List<Mark?> _emptyBoard() => List<Mark?>.filled(size * size, null);
+
+TicTacToeState newGame({Map<String, dynamic> options = const {}}) => game
+    .createInitialState(['x-player', 'o-player'], seed: 0, options: options);
 
 TicTacToeState playAll(TicTacToeState state, List<int> cells) {
   var current = state;
@@ -37,8 +46,7 @@ void main() {
 
     test('khong duoc danh vao o da co nguoi', () {
       final state = playAll(newGame(), [4]);
-      final result =
-          game.validate(state, 'o-player', const TicTacToeMove(4));
+      final result = game.validate(state, 'o-player', const TicTacToeMove(4));
 
       expect(result.isValid, isFalse);
       expect(result.code, 'CELL_TAKEN');
@@ -46,8 +54,7 @@ void main() {
 
     test('khong duoc danh khi chua den luot', () {
       final state = newGame();
-      final result =
-          game.validate(state, 'o-player', const TicTacToeMove(0));
+      final result = game.validate(state, 'o-player', const TicTacToeMove(0));
 
       expect(result.isValid, isFalse);
       expect(result.code, 'NOT_YOUR_TURN');
@@ -55,7 +62,7 @@ void main() {
 
     test('khong duoc danh ra ngoai ban co', () {
       expect(
-        game.validate(newGame(), 'x-player', const TicTacToeMove(100)).code,
+        game.validate(newGame(), 'x-player', TicTacToeMove(size * size)).code,
         'OUT_OF_BOARD',
       );
       expect(
@@ -93,18 +100,31 @@ void main() {
     });
 
     test('thang theo cot doc', () {
-      // X: 0,10,20,30,40   O: 1,2,3,4
-      final state = playAll(newGame(), [0, 1, 10, 2, 20, 3, 30, 4, 40]);
+      // X doc theo cot 0; O danh lung tung o hang 0 cho du luot.
+      final column = [for (var row = 0; row < 5; row++) at(row, 0)];
+      final filler = [for (var i = 1; i <= 4; i++) at(0, i + 4)];
+      final state = playAll(newGame(), [
+        for (var i = 0; i < 5; i++) ...[
+          column[i],
+          if (i < 4) filler[i],
+        ],
+      ]);
 
-      expect(state.winningLine, [0, 10, 20, 30, 40]);
+      expect(state.winningLine, column);
       expect(game.getResult(state).winners, ['x-player']);
     });
 
     test('thang theo duong cheo', () {
-      // X: 0,11,22,33,44   O: 1,2,3,4
-      final state = playAll(newGame(), [0, 1, 11, 2, 22, 3, 33, 4, 44]);
+      final diagonal = [for (var i = 0; i < 5; i++) at(i, i)];
+      final filler = [for (var i = 1; i <= 4; i++) at(0, i + 4)];
+      final state = playAll(newGame(), [
+        for (var i = 0; i < 5; i++) ...[
+          diagonal[i],
+          if (i < 4) filler[i],
+        ],
+      ]);
 
-      expect(state.winningLine, [0, 11, 22, 33, 44]);
+      expect(state.winningLine, diagonal);
       expect(game.getResult(state).isWin, isTrue);
     });
 
@@ -135,7 +155,8 @@ void main() {
 
   group('ai', () {
     test('cap do kho cao can nuoc thang ngay neu co the', () {
-      final board = List<Mark?>.filled(TicTacToeGame.boardSize * TicTacToeGame.boardSize, null);
+      final board = List<Mark?>.filled(
+          TicTacToeGame.boardSize * TicTacToeGame.boardSize, null);
       for (final cell in [0, 1, 2, 3]) {
         board[cell] = Mark.o;
       }
@@ -157,7 +178,8 @@ void main() {
     });
 
     test('cap do trung va cao phai chan nuoc thang cua nguoi choi', () {
-      final board = List<Mark?>.filled(TicTacToeGame.boardSize * TicTacToeGame.boardSize, null);
+      final board = List<Mark?>.filled(
+          TicTacToeGame.boardSize * TicTacToeGame.boardSize, null);
       for (final cell in [0, 1, 2, 3]) {
         board[cell] = Mark.x;
       }
@@ -179,7 +201,8 @@ void main() {
     });
 
     test('cap do de chi chon o trong hop le', () {
-      final board = List<Mark?>.filled(TicTacToeGame.boardSize * TicTacToeGame.boardSize, null);
+      final board = List<Mark?>.filled(
+          TicTacToeGame.boardSize * TicTacToeGame.boardSize, null);
       for (final cell in [0, 1, 2, 3]) {
         board[cell] = Mark.x;
       }
@@ -190,10 +213,82 @@ void main() {
         turnIndex: 1,
       );
 
-      final move = TicTacToeAi.pickMove(state, 'computer', TicTacToeDifficulty.easy);
+      final move =
+          TicTacToeAi.pickMove(state, 'computer', TicTacToeDifficulty.easy);
       expect(move, isNotNull);
       expect(move, isA<int>());
       expect(board[move!], isNull);
+    });
+
+    test('cap do kho phai chan ba mo, khong doi den luc bi bon quan', () {
+      // X co _XXX_ o giua ban. De den luot X danh tiep thi thanh bon mo va
+      // khong con chan duoc, nen day la thoi diem bat buoc phai chan.
+      final board = _emptyBoard();
+      for (final column in [8, 9, 10]) {
+        board[at(10, column)] = Mark.x;
+      }
+      // Hai quan O de o goc, khong tao de doa gi.
+      board[at(0, 0)] = Mark.o;
+      board[at(0, 2)] = Mark.o;
+
+      final state = TicTacToeState(
+        board: board,
+        players: ['human', 'computer'],
+        xPlayerIndex: 0,
+        turnIndex: 1,
+      );
+
+      for (final difficulty in [
+        TicTacToeDifficulty.hard,
+        TicTacToeDifficulty.expert,
+      ]) {
+        expect(
+          TicTacToeAi.pickMove(state, 'computer', difficulty),
+          anyOf(at(10, 7), at(10, 11)),
+          reason: 'muc ${difficulty.label} phai bit mot dau cua ba mo',
+        );
+      }
+    });
+
+    test('moi cap do deu tra loi trong han gio cua no', () {
+      // The co giua van, day de doa cho ca hai ben - truong hop nang nhat cho
+      // thuat toan tim kiem.
+      final board = _emptyBoard();
+      for (final (row, column) in const [(9, 9), (9, 10), (10, 11), (11, 9)]) {
+        board[at(row, column)] = Mark.x;
+      }
+      for (final (row, column) in const [(10, 9), (10, 10), (9, 11), (11, 11)]) {
+        board[at(row, column)] = Mark.o;
+      }
+      final state = TicTacToeState(
+        board: board,
+        players: ['human', 'computer'],
+        xPlayerIndex: 0,
+        turnIndex: 1,
+      );
+
+      // Nguong rong gap doi ngan sach: day la canh cho truong hop may nghi
+      // mai khong dung, khong phai bai do hieu nang chinh xac.
+      const ceiling = {
+        TicTacToeDifficulty.easy: 200,
+        TicTacToeDifficulty.medium: 400,
+        TicTacToeDifficulty.hard: 900,
+        TicTacToeDifficulty.expert: 1400,
+      };
+
+      for (final difficulty in TicTacToeDifficulty.values) {
+        final clock = Stopwatch()..start();
+        final move = TicTacToeAi.pickMove(state, 'computer', difficulty);
+        clock.stop();
+
+        expect(move, isNotNull);
+        expect(board[move!], isNull, reason: 'khong duoc danh de o da co quan');
+        expect(
+          clock.elapsedMilliseconds,
+          lessThan(ceiling[difficulty]!),
+          reason: 'muc ${difficulty.label} nghi qua lau',
+        );
+      }
     });
   });
 
@@ -305,7 +400,7 @@ void main() {
       final registry = GameRegistry()..register(const TicTacToeGame());
 
       expect(registry.contains('tic-tac-toe'), isTrue);
-      expect(registry.require('tic-tac-toe').name, 'Co caro 20x20');
+      expect(registry.require('tic-tac-toe').name, 'Cờ caro');
       expect(registry.all, hasLength(1));
     });
   });

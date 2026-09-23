@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:game_audio/game_audio.dart';
 import 'package:platform_core/platform_core.dart';
 
 import '../state/catalog.dart';
@@ -221,15 +222,7 @@ class _GameBadge extends StatelessWidget {
 
     return Row(
       children: [
-        Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: theme.colorScheme.primaryContainer,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(entry.icon, color: theme.colorScheme.onPrimaryContainer),
-        ),
+        entry.buildIcon(44),
         const SizedBox(width: 12),
         Text(entry.name, style: theme.textTheme.titleMedium),
       ],
@@ -328,7 +321,8 @@ class _PlayerTile extends StatelessWidget {
         ),
         title: Row(
           children: [
-            Flexible(child: Text(slot.nickname, overflow: TextOverflow.ellipsis)),
+            Flexible(
+                child: Text(slot.nickname, overflow: TextOverflow.ellipsis)),
             if (isMe) ...[
               const SizedBox(width: 6),
               Text(
@@ -396,27 +390,35 @@ class _GameView extends ConsumerWidget {
     final disconnected =
         room.players.where((p) => !p.isConnected).toList(growable: false);
 
-    return Scaffold(
-      appBar: AppBar(title: Text(entry.name)),
-      body: Column(
-        children: [
-          _TurnBanner(
-            view: view,
-            finished: client.phase == ClientPhase.finished,
-            gameDeadlineMillis: client.gameDeadlineMillis,
-            turnDeadlineMillis: client.turnDeadlineMillis,
-          ),
-          if (disconnected.isNotEmpty)
-            _DisconnectBanner(nickname: disconnected.first.nickname),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: entry.buildBoard(view),
+    // Nhạc nền bọc cả màn ván đấu, không phải chỉ bàn cờ: rời màn hình là
+    // nhạc tắt. Đặt ở đây nên **mọi game** có nhạc nền, kể cả game thêm sau
+    // này — không game nào phải tự lo phần đó cho ván đấu qua mạng.
+    return GameMusic(
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(entry.name),
+          actions: const [GameAudioButton()],
+        ),
+        body: Column(
+          children: [
+            _TurnBanner(
+              view: view,
+              finished: client.phase == ClientPhase.finished,
+              gameDeadlineMillis: client.gameDeadlineMillis,
+              turnDeadlineMillis: client.turnDeadlineMillis,
             ),
-          ),
-          if (client.result != null)
-            _ResultPanel(session: session, client: client),
-        ],
+            if (disconnected.isNotEmpty)
+              _DisconnectBanner(nickname: disconnected.first.nickname),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: entry.buildBoard(view),
+              ),
+            ),
+            if (client.result != null)
+              _ResultPanel(session: session, client: client),
+          ],
+        ),
       ),
     );
   }
@@ -463,9 +465,18 @@ class _TurnBannerState extends State<_TurnBanner> {
     final turnTime = _remaining(widget.turnDeadlineMillis);
 
     final (label, color) = switch (true) {
-      _ when widget.finished => ('Ván đấu đã kết thúc', theme.colorScheme.onSurfaceVariant),
-      _ when widget.view.hasPendingAction => ('Đang gửi nước đi...', theme.colorScheme.onSurfaceVariant),
-      _ when widget.view.isMyTurn => ('Lượt của bạn', theme.colorScheme.primary),
+      _ when widget.finished => (
+          'Ván đấu đã kết thúc',
+          theme.colorScheme.onSurfaceVariant
+        ),
+      _ when widget.view.hasPendingAction => (
+          'Đang gửi nước đi...',
+          theme.colorScheme.onSurfaceVariant
+        ),
+      _ when widget.view.isMyTurn => (
+          'Lượt của bạn',
+          theme.colorScheme.primary
+        ),
       _ => (
           'Đang chờ ${widget.view.nicknameOf(widget.view.currentActors.firstOrNull ?? "")}',
           theme.colorScheme.onSurfaceVariant
