@@ -72,7 +72,8 @@ class GameSession {
       isFinished ? const [] : adapter.currentActors(_state);
 
   /// Phan state ma rieng [viewer] duoc phep nhin thay.
-  Map<String, dynamic> viewFor(PlayerId viewer) => adapter.viewFor(viewer, _state);
+  Map<String, dynamic> viewFor(PlayerId viewer) =>
+      adapter.viewFor(viewer, _state);
 
   /// Xu ly mot nuoc di. Day la cho duy nhat state duoc phep thay doi.
   ApplyOutcome applyAction({
@@ -126,14 +127,14 @@ class GameSession {
   }
 
   /// Het thoi gian luot: nguoi dang choi thua, neu game co doi thu.
-  void timeout() {
+  void timeout({String reason = 'MOVE_TIMEOUT'}) {
     if (isFinished) return;
     final actor = currentActors.firstOrNull;
     if (actor == null) return;
     final winner = seatOrder.where((player) => player != actor).toList();
     _result = winner.isEmpty
-        ? const GameResult.abandoned(reason: 'TURN_TIMEOUT')
-        : GameResult.winners(winner, reason: 'TURN_TIMEOUT');
+        ? GameResult.abandoned(reason: reason)
+        : GameResult.winners(winner, reason: reason);
     _stateVersion++;
   }
 }

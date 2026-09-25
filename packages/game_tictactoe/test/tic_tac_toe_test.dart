@@ -307,7 +307,22 @@ void main() {
       final restored =
           game.decodeAction(game.encodeAction(const TicTacToeMove(7)));
 
-      expect(restored.cell, 7);
+      expect(restored, isA<TicTacToeMove>());
+      expect((restored as TicTacToeMove).cell, 7);
+    });
+
+    test('cau hoa va xin thua cung di qua encode/decode', () {
+      for (final action in const [
+        TicTacToeDrawOffer(),
+        TicTacToeDrawAccept(),
+        TicTacToeDrawReject(),
+        TicTacToeResign(),
+      ]) {
+        expect(
+          game.decodeAction(game.encodeAction(action)).runtimeType,
+          action.runtimeType,
+        );
+      }
     });
 
     test('co caro khong co thong tin an nen viewFor tra ve nguyen state', () {

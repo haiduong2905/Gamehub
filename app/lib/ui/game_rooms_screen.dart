@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:game_audio/game_audio.dart';
 import 'package:platform_core/platform_core.dart';
 
 import '../state/catalog.dart';
@@ -7,6 +8,7 @@ import '../state/identity.dart';
 import '../state/room_browser.dart';
 import '../state/session.dart';
 import '../transport/lan/local_network_permission.dart';
+import 'app_ui.dart';
 import 'messages.dart';
 import 'room_screen.dart';
 
@@ -22,60 +24,107 @@ class GameRoomsScreen extends ConsumerWidget {
     final browser = ref.watch(roomBrowserProvider(gameId));
 
     return Scaffold(
-      appBar: AppBar(
-        title: Row(children: [
-          entry.buildIcon(30),
-          const SizedBox(width: 10),
-          Expanded(child: Text(entry.name, overflow: TextOverflow.ellipsis)),
-        ]),
+      backgroundColor: GameColors.page,
+      appBar: gameAppBar(
+        context: context,
+        title: entry.name,
+        centerTitle: false,
+        titleLeading: entry.buildIcon(30),
+        background: GameColors.page,
+        foreground: GameColors.ink,
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.read(roomBrowserProvider(gameId).notifier).refresh();
-          // Chờ lượt quét mới, để vòng xoay không biến mất ngay lập tức.
-          await ref.read(roomBrowserProvider(gameId).future);
-        },
-        child: browser.when(
-          loading: () => const _Centered(child: CircularProgressIndicator()),
-          error: (e, _) => _Centered(
-            child: _Notice(
-              icon: Icons.error_outline,
-              title: 'Không quét được mạng',
-              detail: '$e',
+      body: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const AppSectionLabel('PHÒNG TRONG CÙNG WI-FI'),
+            const SizedBox(height: 10),
+            Expanded(
+              child: AppPanel(
+                child: RefreshIndicator(
+                  color: GameColors.accent,
+                  onRefresh: () async {
+                    ref.read(roomBrowserProvider(gameId).notifier).refresh();
+                    // Chờ lượt quét mới, để vòng xoay không biến mất ngay.
+                    await ref.read(roomBrowserProvider(gameId).future);
+                  },
+                  // Quét mạng xong là nội dung đổi hẳn: vòng xoay → danh sách,
+                  // hoặc → lời nhắn "chưa thấy phòng nào". Đổi thẳng thì nó
+                  // chớp một cái.
+                  child: AnimatedSwitcher(
+                    duration: GameMotion.normal,
+                    switchInCurve: GameMotion.curve,
+                    switchOutCurve: GameMotion.curveIn,
+                    child: browser.when(
+                      loading: () => const _Centered(
+                        key: ValueKey('loading'),
+                        child: CircularProgressIndicator(
+                          color: GameColors.accent,
+                        ),
+                      ),
+                      error: (e, _) => _Scrollable(
+                        key: const ValueKey('error'),
+                        child: AppNotice(
+                          icon: Icons.error_outline_rounded,
+                          title: 'Không quét được mạng',
+                          detail: '$e',
+                        ),
+                      ),
+                      data: (state) => state.blockedByPermission
+                          ? _PermissionBlocked(
+                              key: const ValueKey('blocked'),
+                              gameId: gameId,
+                            )
+                          : _RoomList(
+                              key: ValueKey('rooms-${state.rooms.length}'),
+                              gameId: gameId,
+                              rooms: state.rooms,
+                            ),
+                    ),
+                  ),
+                ),
+              ),
             ),
-          ),
-          data: (state) => state.blockedByPermission
-              ? _PermissionBlocked(gameId: gameId)
-              : _RoomList(gameId: gameId, rooms: state.rooms),
+          ],
         ),
       ),
       bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        minimum: const EdgeInsets.fromLTRB(16, 0, 16, 14),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(2, 16, 0, 8),
+              child: Text(
+                'Bắt đầu theo cách của bạn',
+                style: TextStyle(fontSize: 12.5, color: GameColors.muted),
+              ),
+            ),
             // Chỉ hiện khi game thật sự có máy đánh. Màn hình do chính game
             // dựng; màn này không biết đó là game gì.
             if (entry.buildLocalGame case final buildLocalGame?) ...[
-              OutlinedButton.icon(
-                onPressed: () => Navigator.of(context).push(
+              AppTile(
+                icon: Icons.smart_toy_outlined,
+                title: 'Chơi với máy',
+                onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(builder: (_) => buildLocalGame()),
                 ),
-                icon: const Icon(Icons.smart_toy_outlined),
-                label: const Text('Chơi với máy'),
               ),
               const SizedBox(height: 8),
             ],
-            FilledButton.icon(
-              onPressed: () => _createRoom(context, ref, entry),
-              icon: const Icon(Icons.add_rounded),
-              label: const Text('Tạo phòng mới'),
+            AppTile(
+              icon: Icons.add_rounded,
+              title: 'Tạo phòng mới',
+              accent: true,
+              onTap: () => _createRoom(context, ref, entry),
             ),
             const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: () => _joinByAddress(context, ref),
-              icon: const Icon(Icons.keyboard_rounded),
-              label: const Text('Nhập địa chỉ phòng'),
+            AppTile(
+              icon: Icons.keyboard_rounded,
+              title: 'Nhập địa chỉ phòng',
+              onTap: () => _joinByAddress(context, ref),
             ),
           ],
         ),
@@ -120,6 +169,7 @@ class GameRoomsScreen extends ConsumerWidget {
   }
 }
 
+/// Hộp thoại chọn luật thời gian trước khi mở phòng.
 class CreateRoomDialog extends StatefulWidget {
   const CreateRoomDialog({required this.entry, super.key});
 
@@ -136,15 +186,18 @@ class _CreateRoomDialogState extends State<CreateRoomDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Thiết lập ván chơi'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (widget.entry.hostSideOption case final option?) ...[
-            DropdownButtonFormField<String>(
-              initialValue: _hostSide ?? option.defaultValue,
-              decoration: InputDecoration(labelText: option.label),
+    final option = widget.entry.hostSideOption;
+
+    return AppDialog(
+      icon: Icons.tune_rounded,
+      title: 'Thiết lập ván chơi',
+      message: 'Chọn luật thời gian trước khi tạo phòng.',
+      fields: [
+        if (option != null) ...[
+          AppField(
+            label: option.label,
+            child: _Dropdown<String>(
+              value: _hostSide ?? option.defaultValue,
               items: [
                 for (final choice in option.choices)
                   DropdownMenuItem(
@@ -154,12 +207,14 @@ class _CreateRoomDialogState extends State<CreateRoomDialog> {
               ],
               onChanged: (value) => setState(() => _hostSide = value),
             ),
-            const SizedBox(height: 12),
-          ],
-          DropdownButtonFormField<int?>(
-            initialValue: _gameMinutes,
-            decoration:
-                const InputDecoration(labelText: 'Thời gian tối đa một ván'),
+          ),
+          const SizedBox(height: 14),
+        ],
+        AppField(
+          label: 'Thời gian mỗi người cho cả ván',
+          helper: 'Chỉ giảm khi đến lượt người chơi đó.',
+          child: _Dropdown<int?>(
+            value: _gameMinutes,
             items: const [
               DropdownMenuItem(value: 3, child: Text('3 phút')),
               DropdownMenuItem(value: 5, child: Text('5 phút')),
@@ -168,11 +223,12 @@ class _CreateRoomDialogState extends State<CreateRoomDialog> {
             ],
             onChanged: (value) => setState(() => _gameMinutes = value),
           ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<int?>(
-            initialValue: _turnSeconds,
-            decoration:
-                const InputDecoration(labelText: 'Thời gian tối đa một lượt'),
+        ),
+        const SizedBox(height: 14),
+        AppField(
+          label: 'Thời gian tối đa cho mỗi nước đi',
+          child: _Dropdown<int?>(
+            value: _turnSeconds,
             items: const [
               DropdownMenuItem(value: 15, child: Text('15 giây')),
               DropdownMenuItem(value: 30, child: Text('30 giây')),
@@ -181,35 +237,61 @@ class _CreateRoomDialogState extends State<CreateRoomDialog> {
             ],
             onChanged: (value) => setState(() => _turnSeconds = value),
           ),
-        ],
-      ),
+        ),
+      ],
       actions: [
-        TextButton(
+        OutlinedButton(
           onPressed: () => Navigator.of(context).pop(),
+          style: AppButtons.soft,
           child: const Text('Huỷ'),
         ),
         FilledButton(
-          onPressed: () {
-            final option = widget.entry.hostSideOption;
-            Navigator.of(context).pop(
-              RoomSettings(
-                gameOptions: option == null
-                    ? const {}
-                    : {option.key: _hostSide ?? option.defaultValue},
-                gameTimeLimit: _gameMinutes == null
-                    ? null
-                    : Duration(minutes: _gameMinutes!),
-                turnTimeLimit: _turnSeconds == null
-                    ? null
-                    : Duration(seconds: _turnSeconds!),
-              ),
-            );
-          },
+          onPressed: () => Navigator.of(context).pop(
+            RoomSettings(
+              gameOptions: option == null
+                  ? const {}
+                  : {option.key: _hostSide ?? option.defaultValue},
+              matchTimeLimit: _gameMinutes == null
+                  ? null
+                  : Duration(minutes: _gameMinutes!),
+              moveTimeLimit: _turnSeconds == null
+                  ? null
+                  : Duration(seconds: _turnSeconds!),
+            ),
+          ),
+          style: AppButtons.accent,
           child: const Text('Tạo phòng'),
         ),
       ],
     );
   }
+}
+
+/// Ô chọn trong hộp thoại, đã mang sẵn viền dùng chung.
+class _Dropdown<T> extends StatelessWidget {
+  const _Dropdown({
+    required this.value,
+    required this.items,
+    required this.onChanged,
+  });
+
+  final T value;
+  final List<DropdownMenuItem<T>> items;
+  final ValueChanged<T?> onChanged;
+
+  @override
+  Widget build(BuildContext context) => DropdownButtonFormField<T>(
+        initialValue: value,
+        items: items,
+        onChanged: onChanged,
+        isExpanded: true,
+        borderRadius: BorderRadius.circular(12),
+        dropdownColor: GameColors.card,
+        icon: const Icon(Icons.expand_more_rounded,
+            size: 20, color: GameColors.muted),
+        style: const TextStyle(fontSize: 14, color: GameColors.ink),
+        decoration: AppField.decoration(),
+      );
 }
 
 Future<void> _joinDiscovered(
@@ -246,7 +328,7 @@ void _openRoomOrShowError(BuildContext context, WidgetRef ref) {
 }
 
 class _RoomList extends ConsumerWidget {
-  const _RoomList({required this.gameId, required this.rooms});
+  const _RoomList({required this.gameId, required this.rooms, super.key});
 
   final GameId gameId;
   final List<DiscoveredRoom> rooms;
@@ -254,41 +336,36 @@ class _RoomList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     if (rooms.isEmpty) {
-      return ListView(
-        // Phải cuộn được thì kéo-để-làm-mới mới hoạt động khi danh sách rỗng.
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: const [
-          SizedBox(height: 80),
-          _Notice(
-            icon: Icons.search_rounded,
-            title: 'Đang tìm phòng…',
-            detail: 'Chưa thấy phòng nào trong mạng này.\n'
-                'Hãy chắc chắn máy kia đã tạo phòng và đang dùng chung Wi-Fi.',
+      return const _Scrollable(
+        child: AppNotice(
+          icon: Icons.search_rounded,
+          title: 'Đang tìm phòng…',
+          detail: 'Chưa thấy phòng nào trong mạng này.\n'
+              'Hãy kiểm tra hai thiết bị đang dùng chung Wi-Fi.',
+          footer: AppStatusPill(
+            text: 'Đang quét phòng gần bạn',
+            tight: true,
           ),
-        ],
+        ),
       );
     }
 
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 12),
+      padding: const EdgeInsets.all(12),
       itemCount: rooms.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final room = rooms[index];
-        return Card(
-          clipBehavior: Clip.antiAlias,
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 8,
-            ),
-            leading: const Icon(Icons.meeting_room_outlined),
-            title: Text(room.advertisement.displayName),
-            subtitle: Text('${room.address}'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _joinDiscovered(context, ref, room),
+        return AppTile(
+          icon: Icons.meeting_room_outlined,
+          title: room.advertisement.displayName,
+          subtitle: '${room.address}',
+          trailing: const Icon(
+            Icons.chevron_right_rounded,
+            color: GameColors.muted,
           ),
+          onTap: () => _joinDiscovered(context, ref, room),
         );
       },
     );
@@ -296,35 +373,28 @@ class _RoomList extends ConsumerWidget {
 }
 
 class _PermissionBlocked extends ConsumerWidget {
-  const _PermissionBlocked({required this.gameId});
+  const _PermissionBlocked({required this.gameId, super.key});
 
   final GameId gameId;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(20),
-      children: [
-        const SizedBox(height: 60),
-        const _Notice(
+  Widget build(BuildContext context, WidgetRef ref) => _Scrollable(
+        child: AppNotice(
           icon: Icons.wifi_off_rounded,
           title: 'Chưa có quyền truy cập mạng nội bộ',
           detail: 'Không có quyền này thì ứng dụng không thấy được máy khác '
               'trong cùng Wi-Fi.',
+          footer: FilledButton(
+            onPressed: () async {
+              await const LocalNetworkPermission().openSettings();
+              if (!context.mounted) return;
+              ref.read(roomBrowserProvider(gameId).notifier).refresh();
+            },
+            style: AppButtons.accent,
+            child: const Text('Mở Cài đặt'),
+          ),
         ),
-        const SizedBox(height: 24),
-        FilledButton(
-          onPressed: () async {
-            await const LocalNetworkPermission().openSettings();
-            if (!context.mounted) return;
-            ref.read(roomBrowserProvider(gameId).notifier).refresh();
-          },
-          child: const Text('Mở Cài đặt'),
-        ),
-      ],
-    );
-  }
+      );
 }
 
 /// Nhập thẳng `IP:cổng` để vào phòng.
@@ -372,83 +442,66 @@ class _ManualAddressDialogState extends State<_ManualAddressDialog> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Nhập địa chỉ phòng'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Địa chỉ hiện ở màn hình chờ trên máy tạo phòng.',
-          ),
-          const SizedBox(height: 16),
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            keyboardType: TextInputType.text,
-            decoration: InputDecoration(
-              hintText: '192.168.1.5:47821',
-              errorText: _error,
+  Widget build(BuildContext context) => AppDialog(
+        icon: Icons.travel_explore_rounded,
+        title: 'Nhập địa chỉ phòng',
+        message: 'Lấy địa chỉ hiển thị trên màn hình phòng chờ của người '
+            'tạo phòng.',
+        fields: [
+          AppField(
+            label: 'Địa chỉ IP và cổng',
+            child: TextField(
+              controller: _controller,
+              autofocus: true,
+              style: const TextStyle(fontSize: 14, color: GameColors.ink),
+              decoration: AppField.decoration(
+                hint: '192.168.1.5:47821',
+                errorText: _error,
+              ),
+              onSubmitted: (_) => _submit(),
             ),
-            onSubmitted: (_) => _submit(),
+          ),
+          const SizedBox(height: 12),
+          const AppStatusPill(
+            icon: Icons.info_outline_rounded,
+            text: 'Hai thiết bị cần dùng chung Wi-Fi để kết nối trực tiếp.',
           ),
         ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Huỷ'),
-        ),
-        FilledButton(onPressed: _submit, child: const Text('Vào phòng')),
-      ],
-    );
-  }
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: AppButtons.soft,
+            child: const Text('Huỷ'),
+          ),
+          FilledButton(
+            onPressed: _submit,
+            style: AppButtons.accent,
+            child: const Text('Vào phòng'),
+          ),
+        ],
+      );
 }
 
-class _Notice extends StatelessWidget {
-  const _Notice({required this.icon, required this.title, this.detail});
+/// Bọc nội dung để kéo-để-làm-mới vẫn chạy khi khối chỉ có một thông báo.
+class _Scrollable extends StatelessWidget {
+  const _Scrollable({required this.child, super.key});
 
-  final IconData icon;
-  final String title;
-  final String? detail;
+  final Widget child;
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Column(
-        children: [
-          Icon(icon, size: 40, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(height: 16),
-          Text(
-            title,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+  Widget build(BuildContext context) => LayoutBuilder(
+        builder: (context, constraints) => SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Center(child: child),
           ),
-          if (detail != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              detail!,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
+        ),
+      );
 }
 
 class _Centered extends StatelessWidget {
-  const _Centered({required this.child});
+  const _Centered({required this.child, super.key});
 
   final Widget child;
 

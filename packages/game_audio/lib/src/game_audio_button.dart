@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'audio_settings.dart';
+import 'game_chrome.dart';
 
 enum _AudioToggle { effects, music }
 
@@ -25,9 +26,21 @@ class GameAudioButton extends StatelessWidget {
 
     final settings = controller.settings;
 
+    final scheme = Theme.of(context).colorScheme;
     return PopupMenuButton<_AudioToggle>(
       tooltip: 'Âm thanh',
-      icon: Icon(settings.silent ? Icons.volume_off : Icons.volume_up),
+      // Cùng khối vuông bo góc với các nút khác trên thanh tiêu đề. Xem
+      // [GameBarButton] về lý do.
+      icon: Icon(settings.silent ? Icons.volume_off : Icons.volume_up,
+          size: 20, color: scheme.onSurface),
+      iconSize: 20,
+      padding: EdgeInsets.zero,
+      style: IconButton.styleFrom(
+        backgroundColor: scheme.surfaceContainerHighest,
+        fixedSize: const Size(GameBarButton.size, GameBarButton.size),
+        minimumSize: const Size(GameBarButton.size, GameBarButton.size),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
       onSelected: (choice) => switch (choice) {
         _AudioToggle.effects => controller.setEffectsEnabled(
             enabled: !settings.effectsEnabled,

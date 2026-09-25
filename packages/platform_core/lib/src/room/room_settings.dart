@@ -7,40 +7,25 @@ import '../protocol/ids.dart';
 class RoomSettings {
   const RoomSettings({
     this.gameOptions = const <String, dynamic>{},
-    this.gameTimeLimit,
-    this.turnTimeLimit,
+    this.matchTimeLimit,
+    this.moveTimeLimit,
   });
 
   final Map<String, dynamic> gameOptions;
-  final Duration? gameTimeLimit;
-  final Duration? turnTimeLimit;
 
-  int? get gameTimeLimitMs => gameTimeLimit?.inMilliseconds;
-  int? get turnTimeLimitMs => turnTimeLimit?.inMilliseconds;
-}
+  /// Ngan sach thoi gian cua MOI nguoi cho ca van, kieu dong ho co vua.
+  ///
+  /// Khong phai tong thoi gian cua ca ban co: dong ho cua mot nguoi chi chay
+  /// trong luc ho dang suy nghi. Ai tieu het phan cua minh thi nguoi do thua.
+  final Duration? matchTimeLimit;
 
-/// Gioi han thoi gian ma host gui cho client theo cung mot don vi.
-class GameDeadlines {
-  const GameDeadlines({this.gameDeadlineMillis, this.turnDeadlineMillis});
+  /// Thoi gian toi da cho MOT nuoc di. Dat lai tron ven moi luot.
+  final Duration? moveTimeLimit;
 
-  final int? gameDeadlineMillis;
-  final int? turnDeadlineMillis;
-}
+  int? get matchTimeLimitMs => matchTimeLimit?.inMilliseconds;
+  int? get moveTimeLimitMs => moveTimeLimit?.inMilliseconds;
 
-GameDeadlines? deadlinesFrom({
-  required RoomSettings settings,
-  required int startedAtMillis,
-  required int turnStartedAtMillis,
-}) {
-  final gameLimit = settings.gameTimeLimitMs;
-  final turnLimit = settings.turnTimeLimitMs;
-  if (gameLimit == null && turnLimit == null) return null;
-  return GameDeadlines(
-    gameDeadlineMillis:
-        gameLimit == null ? null : startedAtMillis + gameLimit,
-    turnDeadlineMillis:
-        turnLimit == null ? null : turnStartedAtMillis + turnLimit,
-  );
+  bool get hasClocks => matchTimeLimit != null || moveTimeLimit != null;
 }
 
 PlayerId? otherPlayer(List<PlayerId> players, PlayerId player) {

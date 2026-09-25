@@ -47,7 +47,7 @@ void main() {
     );
 
     expect(find.byType(InteractiveViewer), findsOneWidget);
-    expect(find.byType(AnimatedContainer), findsAtLeastNWidgets(1));
+    expect(find.byKey(const ValueKey('cell-0')), findsOneWidget);
   });
 
   testWidgets('chạm ô trống khi đến lượt thì gọi onAction với đúng số ô',
@@ -57,7 +57,7 @@ void main() {
       _board(movesPlayed: const [], me: 'x-player', onAction: sent.add),
     );
 
-    await tester.tap(find.byType(AnimatedContainer).at(4));
+    await tester.tap(find.byKey(const ValueKey('cell-4')));
     await tester.pump();
 
     expect(sent, [
@@ -71,7 +71,7 @@ void main() {
       _board(movesPlayed: const [], me: 'o-player', onAction: sent.add),
     );
 
-    await tester.tap(find.byType(AnimatedContainer).at(0));
+    await tester.tap(find.byKey(const ValueKey('cell-0')));
     await tester.pump();
 
     expect(sent, isEmpty);
@@ -84,7 +84,7 @@ void main() {
       _board(movesPlayed: const [0, 1], me: 'x-player', onAction: sent.add),
     );
 
-    await tester.tap(find.byType(AnimatedContainer).at(0));
+    await tester.tap(find.byKey(const ValueKey('cell-0')));
     await tester.pump();
 
     expect(sent, isEmpty, reason: 'ô 0 đã có X');
@@ -102,7 +102,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byType(AnimatedContainer).at(3));
+    await tester.tap(find.byKey(const ValueKey('cell-3')));
     await tester.pump();
 
     expect(sent, isEmpty, reason: 'tránh gửi hai nước khi người chơi bấm nhanh');
@@ -119,7 +119,7 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byType(AnimatedContainer).at(8));
+    await tester.tap(find.byKey(const ValueKey('cell-8')));
     await tester.pump();
 
     expect(sent, isEmpty);

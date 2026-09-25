@@ -96,8 +96,86 @@ Doze của Android xử lý.
    máy đánh thì dựng luôn màn hình chơi với máy.
 4. Thêm một `CatalogEntry` vào [app/lib/state/catalog.dart](app/lib/state/catalog.dart).
 
-**Âm thanh không phải khai báo gì.** Ván qua mạng đã được màn phòng của `app`
-bọc `GameMusic` và gắn nút loa sẵn. Game chỉ cần: phát tiếng riêng qua
+**Mỗi game tự vẽ dải trạng thái của mình** ("Lượt của bạn", chiếu tướng, hết
+giờ). Màn phòng của `app` không biết game nào đang chạy nên không biết chữ nào
+đúng, và nó không vẽ dòng đó nữa.
+
+**Không có gì trong màn ván đấu được đổi chiều cao giữa ván.** Mọi khối quanh
+bàn cờ — dải trạng thái, thẻ người chơi, hàng nút — phải cao cố định, kể cả khi
+đang trống. `if (x) Widget()` trong một `Column` là cách sinh ra lỗi này: bắt
+quân đầu tiên, bấm ván mới, hay ván kết thúc đều làm cả trang nhảy. Chỗ trống
+trông thừa hơn hẳn một cú nhảy. Có
+[test canh](packages/game_xiangqi/test/xiangqi_board_test.dart).
+
+**Thời lượng animation lấy từ `GameMotion`** của
+[packages/game_audio](packages/game_audio), đừng viết `Duration` rời. Thứ làm
+giao diện trông rời rạc không phải là thiếu animation mà là mỗi chỗ một tốc độ.
+
+**Máy đánh phải chạy ở isolate nền.** Thuật toán tìm kiếm chạy đồng bộ; gọi
+thẳng nó trong `setState` hay trong một `Future.delayed` thì suốt lượt máy nghĩ
+**không khung hình nào được vẽ** — kể cả khung hình đang chờ để hiện nước mà
+người chơi vừa đánh. Triệu chứng đúng là "bấm một ô, một hai giây sau mới thấy
+quân của mình", và nó nặng dần theo độ khó. Cách làm: một hàm **top-level** nhận
+một request chỉ chứa dữ liệu thuần (thế cờ ở dạng JSON đã mã hóa), gọi qua
+`compute` — xem `pickTicTacToeMove` và `pickXiangqiMove`. Trước khi gọi thì
+`await WidgetsBinding.instance.endOfFrame`, đừng `Future.delayed` một nhịp:
+timer và vsync là hai đồng hồ rời nhau. Có
+[test canh ranh giới isolate](packages/game_tictactoe/test/ai_isolate_test.dart)
+ở mỗi game. Widget test nào chạm vào lượt máy phải bọc `tester.runAsync` —
+đồng hồ giả của `testWidgets` không nhích được một isolate khác.
+
+**Khung màn ván đấu dùng lại, không vẽ mới.** `GamePlayerCard`,
+`GameStatusLine`, `GameActionButton`, `GameColors` — tất cả ở `game_audio`.
+Game chỉ đưa vào phần của riêng mình (cờ tướng đưa dải "Đã bắt" vào chỗ
+`footer` mà thẻ chừa sẵn). Tự vẽ một thẻ người chơi riêng là bắt đầu để hai màn
+ván đấu trôi khác nhau, và người chơi đi từ game này sang game kia sẽ thấy hai
+app khác nhau.
+
+**Màn hình của `app` thì dùng lại [app_ui.dart](app/lib/ui/app_ui.dart)** —
+`AppDialog`, `AppTile`, `AppButtons`, `AppField`, `AppNotice`, `AppStatusPill`,
+`AppInkPage`, `AppInkHeader`, `AppInkCard`. Đó là chỗ của những mảnh chỉ `app`
+cần; để chúng vào `game_audio` sẽ bắt mọi package game kéo theo thứ chúng không
+bao giờ gọi.
+
+**Hai bảng màu, mỗi bảng một chặng.** `GameColors` (ở `game_audio`) cho những
+màn dẫn tới bàn cờ — tìm phòng, phòng chờ, ván đấu. `AppInk` (ở `app_ui.dart`)
+cho Trang chủ và Cài đặt, ấm hơn một bậc vì hai màn đó lấy bức tranh thuỷ mặc
+làm nền. Màu nhấn của cả hai là **cùng một sắc đỏ**, nên đường đi từ trang chủ
+tới bàn cờ không thấy đứt đoạn. Đừng thêm bảng thứ ba.
+
+Ảnh trong repo chỉ có **bộ icon app** và **hai file trang trí của `app`**:
+`paper_landscape.png` (nền tranh thuỷ mặc) và `title_banner.png` (tấm biển
+nhãn mục). **Icon game vẫn phải vẽ bằng `CustomPaint`** trong package của game
+— icon phải sắc nét từ 30px tới 90px, ảnh bitmap thì không. Hai file kia thuộc
+về `app` nên chúng nằm ở `app/assets`, và mọi ảnh của bộ mực nho phải có tên
+trong `AppInkImages.all` để công cụ dựng ảnh nạp sẵn được.
+
+**Tấm biển dùng nguyên một ảnh, không cắt mảnh rồi ghép lúc dựng.** Ghép mảnh
+thì bề rộng tấm biển chạy theo độ dài nhãn, nên "KẾT NỐI" ra một tấm ngắn còn
+"CHƠI NHANH" ra một tấm dài — ba mục trên cùng một trang thành ba tấm biển
+khác nhau. Một ảnh nguyên thì ba tấm giống hệt nhau. Đổi lại lòng biển cố định
+ở 34% bề ngang ảnh, nên nhãn dài hơn thế sẽ bị cắt bớt; nhãn mục vốn ngắn nên
+đó là cái giá đúng.
+
+**Một sắc vàng cho mọi khung viền.** `GameColors.frame` ở
+[game_audio](packages/game_audio) là màu duy nhất của viền: nhãn mục, viền
+thẻ ở `app`, và viền icon của từng game đều lấy từ đó. Để mỗi chỗ tự khai một
+sắc nâu gần giống nhau thì chúng sẽ trôi khỏi nhau, và trên cùng một trang
+trông như lỗi in. Nó nằm ở `game_audio` vì đó là package duy nhất mà cả `app`
+lẫn mọi package game đều phụ thuộc.
+
+**Mọi thứ tầng mạng lấy qua provider, không tự dựng.**
+[network_providers.dart](app/lib/state/network_providers.dart) tồn tại để
+override được. Gọi thẳng `LanDiscovery()` hay `LocalNetworkPermission()` trong
+một notifier là biến màn hình đó thành màn duy nhất không test được và không
+dựng ảnh được — đã xảy ra một lần ở màn tìm phòng, có
+[test canh](app/test/rooms_screen_test.dart).
+
+**Âm thanh và thanh tiêu đề không phải khai báo gì.** Ván qua mạng đã được màn
+phòng của `app` bọc `GameMusic` và dựng sẵn `gameAppBar` kèm nút loa. Màn chơi
+với máy thì game tự gọi `gameAppBar` của
+[packages/game_audio](packages/game_audio) — đừng tự dựng `AppBar` riêng, hai
+đường đó phải trông giống nhau. Ngoài ra game chỉ cần: phát tiếng riêng qua
 `GameSoundPlayer` của [packages/game_audio](packages/game_audio) — **cấm gọi
 thẳng `audioplayers`**, vì gọi thẳng là bỏ qua nút tắt tiếng của người dùng —
 và màn chơi với máy của mình thì tự bọc `GameMusic` + thêm `GameAudioButton`.
@@ -138,8 +216,41 @@ dart run bin/benchmark_ai.dart       # máy nghĩ bao lâu, mức trên có th�
 dart run bin/generate_sounds.dart    # sinh lại assets/sounds/*.wav
 
 cd packages/game_audio
-dart run bin/generate_music.dart     # sinh lại nhạc nền assets/music/ambient.wav
+dart run bin/generate_music.dart     # sinh lại nhạc nền assets/music/ambient.mp3
+
+cd packages/game_xiangqi
+flutter test tool/render_preview_test.dart   # dựng build/*.png để soi bố cục
+
+cd app
+flutter test tool/render_preview_test.dart   # dựng build/*.png các màn của app
+flutter test tool/render_app_icon_test.dart  # dựng lại 27 file icon của app
+flutter build web --release && \
+  dart run tool/shoot_web.dart build/shots shot:trang-chu   # chụp app chạy thật
 ```
+
+Công cụ dựng ảnh nằm ở `tool/` chứ không ở `test/`: nó không khẳng định điều
+gì, nó chỉ vẽ ra để mắt người nhìn. Để trong `test/` thì `flutter test` chạy
+luôn nó và lẫn vào kết quả thật — riêng công cụ icon còn ghi đè file trong
+repo, càng không được chạy lẫn.
+
+**Sửa giao diện xong thì soi bằng [shoot_web.dart](app/tool/shoot_web.dart),
+đừng dừng ở `render_preview_test.dart`.** Công cụ dựng widget chạy dưới
+`flutter test`, mà font của `flutter_test` không có glyph Latin: mọi chữ ra ô
+vuông, rộng hơn chữ thật kha khá, và không ảnh nào tự giải mã. Nó đủ để canh
+khối, không đủ để kết luận "đã đúng thiết kế". `shoot_web.dart` chạy **app
+thật** trong Chrome ở đúng 390x844 @3x, bấm được để sang màn khác, nên thấy
+đúng thứ người dùng thấy.
+
+Công cụ đó đi qua DevTools Protocol chứ không dùng cờ `--screenshot` của
+Chrome: `--window-size` cộng `--force-device-scale-factor` cho ra viewport
+không đoán trước được, và đã một lần chụp ở 390px trong khi Flutter dựng bố
+cục ở 780px — loại sai lệch làm ta tin nhầm rằng giao diện đã đúng.
+
+**Icon của app sửa ở hai chỗ, và hai chỗ phải khớp**:
+[app_icon.svg](app/assets/images/app_icon.svg) là nguồn thiết kế, còn
+[render_app_icon_test.dart](app/tool/render_app_icon_test.dart) là thứ thật sự
+dựng ra PNG cho Android/iOS/web và `.ico` cho Windows. Đừng xuất ảnh bằng tay:
+27 file ở 4 nền tảng, bỏ sót một cái là icon lệch nhau mà không ai nhận ra.
 
 Mọi âm thanh trong repo đều **tổng hợp bằng Dart**, không tải file ngoài: không
 vướng giấy phép, và muốn đổi thì sửa công thức rồi chạy lại. Nhạc nền phải lặp

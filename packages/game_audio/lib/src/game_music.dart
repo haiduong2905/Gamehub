@@ -10,7 +10,7 @@ import 'audio_settings.dart';
 /// Để ở package dùng chung chứ không ở từng game: thêm game mới là có nhạc
 /// nền ngay, không phải tự đi kiếm nhạc. Game nào muốn màu riêng thì truyền
 /// [GameMusic.asset] của mình.
-const kDefaultMusicAsset = 'packages/game_audio/assets/music/ambient.wav';
+const kDefaultMusicAsset = 'packages/game_audio/assets/music/ambient.mp3';
 
 /// Chạy nhạc nền suốt thời gian [child] còn nằm trên màn hình.
 ///
@@ -97,10 +97,13 @@ class _GameMusicState extends State<GameMusic> with WidgetsBindingObserver {
         _playing = false;
         await _player.stop();
       }
-    } catch (_) {
+    } catch (error) {
       // Không có ngõ ra âm thanh, hoặc trình duyệt chưa cho phát: ván đấu vẫn
-      // phải chạy bình thường.
+      // phải chạy bình thường. Nhưng nuốt lỗi **im lặng** thì mất nhạc trở
+      // thành một bí ẩn không lần ra được — đổi file nhạc xong không nghe gì
+      // mà không có lấy một dòng nào để bám. In đúng một dòng, kèm tên asset.
       _playing = false;
+      debugPrint('GameMusic: không phát được "${widget.asset}" — $error');
     }
   }
 

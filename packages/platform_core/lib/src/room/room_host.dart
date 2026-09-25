@@ -8,8 +8,10 @@ import '../protocol/messages.dart';
 import '../session/game_session.dart';
 import '../transport/local_link.dart';
 import '../transport/transport.dart';
+import 'player_clock.dart';
 import 'room_models.dart';
 import 'room_settings.dart';
+import 'series_score.dart';
 
 /// Phia host cua mot phong: trong tai duy nhat.
 ///
@@ -73,9 +75,22 @@ class RoomHost {
 
   RoomStatus _status = RoomStatus.waiting;
   GameSession? _session;
-  Timer? _gameTimer;
-  Timer? _turnTimer;
-  GameDeadlines? _deadlines;
+  Timer? _clockTimer;
+
+  /// Ngan sach ca van cua tung nguoi, va thoi gian con lai cho nuoc di dang
+  /// cho. Vang mat trong map = nguoi do khong bi gioi han dong ho do.
+  final Map<PlayerId, int> _matchRemaining = <PlayerId, int>{};
+  final Map<PlayerId, int> _moveRemaining = <PlayerId, int>{};
+
+  /// Luot hien tai bat dau luc nao, de biet nguoi dang di da tieu bao nhieu.
+  int _turnStartedAtMillis = 0;
+
+  /// Ti so thang - thua tinh tu luc mo phong, cong don qua cac van.
+  ///
+  /// Song theo phong chu khong theo van: bam "Choi lai" la sang van moi nhung
+  /// van cung mot loat dau. Ghi theo `playerId` nen ai mat ket noi roi vao
+  /// lai van giu nguyen diem cua minh.
+  SeriesScore _series = SeriesScore.empty;
   int? _port;
   bool _closed = false;
 
@@ -130,8 +145,7 @@ class RoomHost {
       timer.cancel();
     }
     _graceTimers.clear();
-  _gameTimer?.cancel();
-  _turnTimer?.cancel();
+    _clockTimer?.cancel();
 
     for (final sub in _subscriptions) {
       await sub.cancel();
@@ -347,8 +361,8 @@ class RoomHost {
           state: session.viewFor(playerId),
           currentActors: session.currentActors,
           seatOrder: session.seatOrder,
-          gameDeadlineMillis: _deadlines?.gameDeadlineMillis,
-          turnDeadlineMillis: _deadlines?.turnDeadlineMillis,
+          playerClocks: _clocksNow(),
+          series: _series,
         ),
       );
     }
@@ -417,13 +431,7 @@ class RoomHost {
     );
     _session = session;
     _status = RoomStatus.playing;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    _deadlines = deadlinesFrom(
-      settings: settings,
-      startedAtMillis: now,
-      turnStartedAtMillis: now,
-    );
-    _scheduleTimers();
+    _startClocks(seatOrder, session.currentActors);
 
     for (final slot in _slots) {
       _sendToPlayer(
@@ -434,8 +442,8 @@ class RoomHost {
           state: session.viewFor(slot.playerId),
           currentActors: session.currentActors,
           seatOrder: seatOrder,
-          gameDeadlineMillis: _deadlines?.gameDeadlineMillis,
-          turnDeadlineMillis: _deadlines?.turnDeadlineMillis,
+          playerClocks: _clocksNow(),
+          series: _series,
         ),
       );
     }
@@ -475,15 +483,7 @@ class RoomHost {
         _sendState(playerId, session, lastActionId: message.actionId);
       case ActionApplied(:final finished):
         if (!finished) {
-          _deadlines = deadlinesFrom(
-            settings: settings,
-            startedAtMillis: _deadlines?.gameDeadlineMillis == null
-                ? DateTime.now().millisecondsSinceEpoch
-                : DateTime.now().millisecondsSinceEpoch -
-                    settings.gameTimeLimit!.inMilliseconds,
-            turnStartedAtMillis: DateTime.now().millisecondsSinceEpoch,
-          );
-          _scheduleTimers();
+          _passTurn(from: playerId, to: session.currentActors);
         }
         for (final slot in _slots) {
           _sendState(slot.playerId, session, lastActionId: message.actionId);
@@ -504,15 +504,21 @@ class RoomHost {
         state: session.viewFor(playerId),
         currentActors: session.currentActors,
         lastActionId: lastActionId,
-          gameDeadlineMillis: _deadlines?.gameDeadlineMillis,
-          turnDeadlineMillis: _deadlines?.turnDeadlineMillis,
+        playerClocks: _clocksNow(),
+        series: _series,
       ),
     );
   }
 
   void _finishGame(GameSession session) {
     _status = RoomStatus.finished;
-    _deadlines = null;
+    _clockTimer?.cancel();
+    _matchRemaining.clear();
+    _moveRemaining.clear();
+    // Cong diem TRUOC khi gui ket qua, de ban tin bao van xong mang luon ti so
+    // da tinh ca van vua roi - neu khong, ti so tang len o ban tin sau va nguoi
+    // choi thay con so nhay mot nhip sau khi doc xong ket qua.
+    _series = _series.after(session.result!);
     // Van moi thi ai cung phai bam san sang lai.
     for (var i = 0; i < _slots.length; i++) {
       _slots[i] = _slots[i].copyWith(isReady: false);
@@ -524,11 +530,11 @@ class RoomHost {
           stateVersion: session.stateVersion,
           state: session.viewFor(slot.playerId),
           result: session.result!,
+          series: _series,
         ),
       );
     }
-    _gameTimer?.cancel();
-    _turnTimer?.cancel();
+    _clockTimer?.cancel();
     // Ket qua khong mang theo snapshot phong, nen phai gui rieng: neu khong,
     // client van thay trang thai san sang cu cua van truoc.
     _broadcast(
@@ -655,8 +661,7 @@ class RoomHost {
       return;
     }
     final enough = _slots.length >= _minPlayers;
-    _status =
-        enough && _allReady ? RoomStatus.ready : RoomStatus.waiting;
+    _status = enough && _allReady ? RoomStatus.ready : RoomStatus.waiting;
   }
 
   void _compactSeats() {
@@ -717,32 +722,114 @@ class RoomHost {
     if (!_snapshots.isClosed) _snapshots.add(snapshot);
   }
 
-  void _scheduleTimers() {
-    _gameTimer?.cancel();
-    _turnTimer?.cancel();
-    final gameDeadline = _deadlines?.gameDeadlineMillis;
-    final turnDeadline = _deadlines?.turnDeadlineMillis;
-    if (gameDeadline != null) {
-      _gameTimer = Timer(
-        Duration(milliseconds: gameDeadline - DateTime.now().millisecondsSinceEpoch),
-        () {
-          final session = _session;
-          if (session == null || _status != RoomStatus.playing) return;
-          session.abandon(reason: 'GAME_TIMEOUT');
-          _finishGame(session);
-        },
-      );
+  /// Doi mot han chot cua host thanh so mili giay con lai.
+  // -------------------------------------------------------------------------
+  // Dong ho
+  //
+  // Moi nguoi mot cap dong ho, kieu co vua: mot cho nuoc di dang cho, mot la
+  // ngan sach cua rieng ho cho ca van. Dong ho chi chay trong luc chinh chu
+  // dang suy nghi - nghi lau la tu an vao phan cua minh, khong an vao phan
+  // cua doi thu.
+  // -------------------------------------------------------------------------
+
+  /// Dat dong ho cho mot van moi.
+  void _startClocks(List<PlayerId> seatOrder, List<PlayerId> actors) {
+    _matchRemaining.clear();
+    _moveRemaining.clear();
+    final matchLimit = settings.matchTimeLimitMs;
+    final moveLimit = settings.moveTimeLimitMs;
+    for (final player in seatOrder) {
+      if (matchLimit != null) _matchRemaining[player] = matchLimit;
+      if (moveLimit != null) _moveRemaining[player] = moveLimit;
     }
-    if (turnDeadline != null) {
-      _turnTimer = Timer(
-        Duration(milliseconds: turnDeadline - DateTime.now().millisecondsSinceEpoch),
-        () {
-          final session = _session;
-          if (session == null || _status != RoomStatus.playing) return;
-          session.timeout();
-          _finishGame(session);
-        },
-      );
+    _turnStartedAtMillis = DateTime.now().millisecondsSinceEpoch;
+    _scheduleClockTimer(actors);
+  }
+
+  /// Ket thuc luot cua [from] va bat dau luot cua [to].
+  void _passTurn({required PlayerId from, required List<PlayerId> to}) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final spent = now - _turnStartedAtMillis;
+
+    // Nguoi vua di bi tru dung phan ho da nghi. Dong ho nuoc di cua ho giu
+    // lai cho con thua, de man hinh con cho thay ho vua di nhanh hay cham.
+    final match = _matchRemaining[from];
+    if (match != null) _matchRemaining[from] = _floor(match - spent);
+    final move = _moveRemaining[from];
+    if (move != null) _moveRemaining[from] = _floor(move - spent);
+
+    // Nguoi sap di duoc dong ho nuoc di moi tinh.
+    final moveLimit = settings.moveTimeLimitMs;
+    if (moveLimit != null) {
+      for (final player in to) {
+        _moveRemaining[player] = moveLimit;
+      }
     }
+
+    _turnStartedAtMillis = now;
+    _scheduleClockTimer(to);
+  }
+
+  static int _floor(int value) => value < 0 ? 0 : value;
+
+  /// Anh chup dong ho de gui di, tinh tai thoi diem goi.
+  ///
+  /// Trong nay host giu SO CON LAI cua tung nguoi cong voi moc bat dau luot,
+  /// vi no chi so voi dong ho cua chinh no. Ra ngoai day thi chi con KHOANG
+  /// THOI GIAN, de may nhan khong phai so gio cua minh voi gio cua host.
+  /// Xem [GameStart.playerClocks].
+  Map<PlayerId, PlayerClock> _clocksNow() {
+    if (_matchRemaining.isEmpty && _moveRemaining.isEmpty) return const {};
+    final session = _session;
+    final actors = session?.currentActors ?? const <PlayerId>[];
+    final spent = DateTime.now().millisecondsSinceEpoch - _turnStartedAtMillis;
+
+    return {
+      for (final slot in _slots)
+        slot.playerId: () {
+          final running = actors.contains(slot.playerId);
+          final match = _matchRemaining[slot.playerId];
+          final move = _moveRemaining[slot.playerId];
+          // Nguoi dang di thi so trong map la so luc luot bat dau, phai tru
+          // phan da nghi. Nguoi khac thi so do dung yen tu luc ho di xong.
+          return PlayerClock(
+            matchMillis:
+                match == null ? null : _floor(running ? match - spent : match),
+            moveMillis:
+                move == null ? null : _floor(running ? move - spent : move),
+            running: running,
+          );
+        }(),
+    };
+  }
+
+  /// Hen gio cho ben dang di het gio - cai nao can truoc thi tinh cai do.
+  void _scheduleClockTimer(List<PlayerId> actors) {
+    _clockTimer?.cancel();
+    final actor = actors.firstOrNull;
+    if (actor == null) return;
+
+    final match = _matchRemaining[actor];
+    final move = _moveRemaining[actor];
+    final int limit;
+    final String reason;
+    if (match != null && (move == null || match <= move)) {
+      limit = match;
+      reason = 'MATCH_TIMEOUT';
+    } else if (move != null) {
+      limit = move;
+      reason = 'MOVE_TIMEOUT';
+    } else {
+      return; // Van nay khong tinh gio.
+    }
+
+    _clockTimer = Timer(Duration(milliseconds: _floor(limit)), () {
+      final session = _session;
+      if (session == null || _status != RoomStatus.playing) return;
+      if (_matchRemaining.containsKey(actor)) _matchRemaining[actor] = 0;
+      if (_moveRemaining.containsKey(actor)) _moveRemaining[actor] = 0;
+      session.timeout(reason: reason);
+      _finishGame(session);
+    });
   }
 }

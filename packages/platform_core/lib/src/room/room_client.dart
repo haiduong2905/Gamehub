@@ -6,7 +6,9 @@ import '../protocol/ids.dart';
 import '../protocol/message_codec.dart';
 import '../protocol/messages.dart';
 import '../transport/transport.dart';
+import 'player_clock.dart';
 import 'room_models.dart';
+import 'series_score.dart';
 
 /// Giai doan cua client trong mot phong.
 enum ClientPhase {
@@ -41,8 +43,8 @@ class RoomClientState {
     this.seatOrder = const [],
     this.result,
     this.pendingActionId,
-    this.gameDeadlineMillis,
-    this.turnDeadlineMillis,
+    this.playerClocks = const {},
+    this.series = SeriesScore.empty,
     this.errorCode,
     this.errorMessage,
     this.closeCode,
@@ -64,8 +66,16 @@ class RoomClientState {
   /// Day KHONG phai du doan lac quan: client khong he tu ve ket qua nuoc di,
   /// no chi bao cho nguoi dung biet cham vua duoc ghi nhan.
   final String? pendingActionId;
-  final int? gameDeadlineMillis;
-  final int? turnDeadlineMillis;
+
+  /// Dong ho tung nguoi, da dong dau theo gio CUA CHINH MAY NAY.
+  ///
+  /// Host gui xuong so mili giay con lai; may nay dong dau ngay luc giai ma.
+  /// Nho vay gio he thong cua hai may lech bao nhieu cung khong anh huong:
+  /// khong co phep tru nao bac qua hai dong ho khac nhau.
+  final Map<PlayerId, PlayerClock> playerClocks;
+
+  /// Ti so thang - thua cua ca loat van, do host tinh va phat xuong.
+  final SeriesScore series;
 
   final String? errorCode;
   final String? errorMessage;
@@ -90,14 +100,15 @@ class RoomClientState {
     List<PlayerId>? seatOrder,
     GameResult? result,
     String? pendingActionId,
-    int? gameDeadlineMillis,
-    int? turnDeadlineMillis,
+    Map<PlayerId, PlayerClock>? playerClocks,
+    SeriesScore? series,
     String? errorCode,
     String? errorMessage,
     String? closeCode,
     bool clearPendingAction = false,
     bool clearError = false,
     bool clearResult = false,
+    bool clearClocks = false,
   }) =>
       RoomClientState(
         phase: phase ?? this.phase,
@@ -108,10 +119,12 @@ class RoomClientState {
         currentActors: currentActors ?? this.currentActors,
         seatOrder: seatOrder ?? this.seatOrder,
         result: clearResult ? null : (result ?? this.result),
-        pendingActionId:
-            clearPendingAction ? null : (pendingActionId ?? this.pendingActionId),
-        gameDeadlineMillis: gameDeadlineMillis ?? this.gameDeadlineMillis,
-        turnDeadlineMillis: turnDeadlineMillis ?? this.turnDeadlineMillis,
+        pendingActionId: clearPendingAction
+            ? null
+            : (pendingActionId ?? this.pendingActionId),
+        playerClocks:
+            clearClocks ? const {} : (playerClocks ?? this.playerClocks),
+        series: series ?? this.series,
         errorCode: clearError ? null : (errorCode ?? this.errorCode),
         errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
         closeCode: closeCode ?? this.closeCode,
@@ -186,7 +199,8 @@ class RoomClient {
   /// Khong tu ap dung nuoc di vao [state]: client khong bao gio tu quyet dinh.
   /// State chi doi khi host gui GAME_STATE ve.
   String sendAction(Map<String, dynamic> action) {
-    final actionId = '$playerId-${_actionCounter++}-${_random.nextInt(1 << 20)}';
+    final actionId =
+        '$playerId-${_actionCounter++}-${_random.nextInt(1 << 20)}';
     _emit(_state.copyWith(pendingActionId: actionId, clearError: true));
     _send(
       GameActionMessage(
@@ -250,8 +264,8 @@ class RoomClient {
             stateVersion: message.stateVersion,
             currentActors: message.currentActors,
             seatOrder: message.seatOrder,
-            gameDeadlineMillis: message.gameDeadlineMillis,
-            turnDeadlineMillis: message.turnDeadlineMillis,
+            playerClocks: message.playerClocks,
+            series: message.series,
             clearPendingAction: true,
             clearError: true,
             clearResult: true,
@@ -267,8 +281,8 @@ class RoomClient {
             gameState: message.state,
             stateVersion: message.stateVersion,
             currentActors: message.currentActors,
-            gameDeadlineMillis: message.gameDeadlineMillis,
-            turnDeadlineMillis: message.turnDeadlineMillis,
+            playerClocks: message.playerClocks,
+            series: message.series,
             clearPendingAction: clearPending,
           ),
         );
@@ -280,10 +294,12 @@ class RoomClient {
             gameState: message.state,
             stateVersion: message.stateVersion,
             currentActors: const [],
-            gameDeadlineMillis: message.gameDeadlineMillis,
-            turnDeadlineMillis: message.turnDeadlineMillis,
             result: message.result,
+            series: message.series,
             clearPendingAction: true,
+            // Van da xong thi khong con gi de dem nguoc. Giu lai so cu chi
+            // lam nguoi choi tuong van dau van dang chay.
+            clearClocks: true,
           ),
         );
 

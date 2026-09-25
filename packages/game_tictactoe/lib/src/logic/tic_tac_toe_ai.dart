@@ -518,3 +518,38 @@ class _Engine {
     return null;
   }
 }
+
+/// Dữ liệu đủ cho một lượt nghĩ của máy, ở dạng gửi được sang isolate khác.
+///
+/// Thế cờ đi ở dạng JSON đã mã hóa chứ không phải [TicTacToeState]: đó đúng là
+/// dạng mà giao thức vẫn dùng để truyền thế cờ qua mạng, nên chắc chắn gửi
+/// được, và đã có golden test canh sẵn.
+class TicTacToeAiRequest {
+  const TicTacToeAiRequest({
+    required this.state,
+    required this.actor,
+    required this.difficulty,
+  });
+
+  final Map<String, dynamic> state;
+  final PlayerId actor;
+  final TicTacToeDifficulty difficulty;
+}
+
+/// Chọn nước cho máy — hàm top-level để chạy được ở isolate nền qua `compute`.
+///
+/// Vì sao phải ra isolate nền: mức Khó nghĩ tới 450ms, mức Chuyên gia 700ms.
+/// Thuật toán chạy đồng bộ, nên chừng ấy mili giây trên luồng giao diện là
+/// chừng ấy mili giây **không khung hình nào được vẽ** — kể cả khung hình đang
+/// chờ để hiện quân mà người chơi vừa đánh. Triệu chứng là bấm một ô rồi 1-2
+/// giây sau mới thấy quân của mình, và nó nặng thêm theo độ khó.
+///
+/// Nhường một nhịp rồi mới tính (`Future.delayed`) không cứu được: nhịp đó chỉ
+/// đẩy khung hình lên trước *nếu* timer về sau vsync, mà hai đồng hồ đó không
+/// liên quan gì nhau. Và dù có vẽ kịp quân X thì nét viết của nó vẫn đứng hình
+/// suốt lượt máy nghĩ.
+int? pickTicTacToeMove(TicTacToeAiRequest request) => TicTacToeAi.pickMove(
+      const TicTacToeGame().decodeState(request.state),
+      request.actor,
+      request.difficulty,
+    );

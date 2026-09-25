@@ -18,18 +18,28 @@ const sampleRate = 22050;
 void main() {
   Directory('assets/sounds').createSync(recursive: true);
 
+  // Độ dài hai tiếng dưới đây phải khớp với nét viết trên bàn cờ
+  // (`_writeDurationX`/`_writeDurationO` trong `tic_tac_toe_board.dart`):
+  // tiếng bút kêu xong trước khi quân vẽ xong, hoặc ngược lại, đều nghe như
+  // âm thanh bị lệch khỏi hình.
+  //
+  // Bản đầu để 0,30 và 0,32 giây — đúng tốc độ một nét bút thật, nhưng ván
+  // caro là gõ liên tiếp, và mỗi lần đặt quân phải chờ hết chừng ấy mới thấy
+  // xong thì cả ván nghe nặng nề. Rút còn khoảng hai phần ba, bù lại gain cao
+  // hơn một chút vì nét ngắn thì tổng năng lượng ít đi.
+
   // X là hai nét chéo: hai tiếng xoạt ngắn, gọn, cách nhau một nhịp nghỉ tay.
-  save('pen_x', 0.30, (pen) {
-    return pen.stroke(begin: 0.0, length: 0.105, gain: 0.40, tone: 1.0) +
-        pen.stroke(begin: 0.168, length: 0.105, gain: 0.37, tone: 1.12);
+  save('pen_x', 0.19, (pen) {
+    return pen.stroke(begin: 0.0, length: 0.066, gain: 0.44, tone: 1.0) +
+        pen.stroke(begin: 0.106, length: 0.066, gain: 0.41, tone: 1.12);
   });
 
   // O là một nét vòng liền: dài hơn, đều tay hơn, trầm hơn một chút.
-  save('pen_o', 0.32, (pen) {
+  save('pen_o', 0.21, (pen) {
     return pen.stroke(
       begin: 0.0,
-      length: 0.265,
-      gain: 0.34,
+      length: 0.175,
+      gain: 0.38,
       tone: 0.82,
       steadiness: 1.6,
     );

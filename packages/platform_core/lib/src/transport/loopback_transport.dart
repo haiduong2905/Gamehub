@@ -118,7 +118,8 @@ class LoopbackClientTransport implements ClientTransport {
   }) async {
     final host = _network._listeners[address.port];
     if (host == null) {
-      throw const TransportException('REFUSED', 'Khong co ai lang nghe o cong nay');
+      throw const TransportException(
+          'REFUSED', 'Khong co ai lang nghe o cong nay');
     }
     return host._accept();
   }
@@ -135,7 +136,8 @@ class LoopbackDiscovery implements DiscoveryService {
   GameId? _filterGameId;
 
   @override
-  Stream<List<DiscoveredRoom>> get rooms => _controller.stream.map(_applyFilter);
+  Stream<List<DiscoveredRoom>> get rooms =>
+      _controller.stream.map(_applyFilter);
 
   List<DiscoveredRoom> _applyFilter(List<DiscoveredRoom> all) {
     final gameId = _filterGameId;

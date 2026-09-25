@@ -1,37 +1,74 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:game_audio/game_audio.dart';
 import 'package:flutter/material.dart';
+import 'package:game_audio/game_audio.dart';
 import 'package:platform_core/platform_core.dart';
 
 import '../logic/xiangqi.dart';
+import 'xiangqi_move_list.dart';
+import 'xiangqi_player_card.dart';
+import 'xiangqi_theme.dart';
 
-const _paper = Color(0xFFFFF7EA);
-const _ink = Color(0xFFB96B2C);
-const _red = Color(0xFFC42C1D);
-const _black = Color(0xFF292C2E);
-
+/// Toàn bộ màn ván đấu cờ tướng, trừ thanh tiêu đề.
+///
+/// Thẻ đối thủ ở trên, bàn cờ ở giữa, thẻ mình ở dưới, hàng nút ở đáy — đúng
+/// thứ tự mắt đi khi đang chơi. Đồng hồ nằm trong thẻ của từng người chứ
+/// không gom vào một thanh: đồng hồ là của một người cụ thể, đặt cạnh tên
+/// người đó thì không phải đọc nhãn mới biết của ai.
 class XiangqiBoard extends StatefulWidget {
-  const XiangqiBoard({required this.view, super.key});
+  const XiangqiBoard({
+    required this.view,
+    this.onUndo,
+    this.opponentSubtitle,
+    super.key,
+  });
 
+  /// Dựng bàn cờ cho ván qua mạng. `app` gọi hàm này qua `CatalogEntry` mà
+  /// không biết bên trong là game gì.
   static Widget build(GameView view) => XiangqiBoard(view: view);
 
   final GameView view;
+
+  /// Khác null thì hiện nút **Hoàn tác** thay cho nút **Nước đi**.
+  ///
+  /// Đi lại một nước chỉ có nghĩa khi đối thủ là máy: qua mạng thì nước đã đi
+  /// là nước đã gửi cho người khác, đòi lại được là một lỗ hổng chứ không
+  /// phải một tiện ích.
+  final VoidCallback? onUndo;
+
+  /// Dòng nhỏ dưới tên đối thủ, ví dụ mức độ của máy.
+  final String? opponentSubtitle;
 
   @override
   State<XiangqiBoard> createState() => _XiangqiBoardState();
 }
 
-class _XiangqiBoardState extends State<XiangqiBoard> {
+class _XiangqiBoardState extends State<XiangqiBoard>
+    with SingleTickerProviderStateMixin {
   static const _game = XiangqiGame();
   int? _selected;
   int _checkmateSoundPly = -1;
 
-  /// Phat tieng quan co, ton trong cai dat am thanh cua app.
+  /// Quân vừa đi chạy từ điểm xuất phát tới đích.
   ///
-  /// Dung o [didChangeDependencies] vi no can [GameAudioScope] phia tren.
-  /// Khong co scope - nhu trong widget test - thi no chay im lang.
+  /// Chỉ một quân duy nhất nên không cần theo dõi danh tính từng quân — thứ
+  /// mà `XiangqiState` không có, vì hai con Xe cùng màu là hai giá trị bằng
+  /// nhau. Ở đây chỉ cần biết `lastMove.from` và `lastMove.to`.
+  late final AnimationController _slide = AnimationController(
+    vsync: this,
+    duration: GameMotion.normal,
+  );
+  int? _slideFrom;
+  int? _slideTo;
+
+  /// Nhịp đập mỗi giây để đồng hồ chạy. Chỉ bật khi ván có tính giờ.
+  Timer? _ticker;
+
+  /// Phát tiếng quân cờ, tôn trọng cài đặt âm thanh của app.
+  ///
+  /// Dựng ở [didChangeDependencies] vì nó cần [GameAudioScope] phía trên.
+  /// Không có scope — như trong widget test — thì nó chạy im lặng.
   GameSoundPlayer? _sound;
 
   @override
@@ -42,6 +79,7 @@ class _XiangqiBoardState extends State<XiangqiBoard> {
       _sound?.dispose();
       _sound = GameSoundPlayer(controller: controller);
     }
+    _syncTicker();
   }
 
   @override
@@ -51,6 +89,12 @@ class _XiangqiBoardState extends State<XiangqiBoard> {
     final after = _game.decodeState(widget.view.state);
     if (after.ply > before.ply) {
       _selected = null;
+      final move = after.lastMove;
+      if (move != null) {
+        _slideFrom = move.from;
+        _slideTo = move.to;
+        _slide.forward(from: 0);
+      }
       final isMate = _game.isFinished(after) &&
           {'CHECKMATE', 'KING_CAPTURED'}
               .contains(_game.getResult(after).reason);
@@ -71,6 +115,24 @@ class _XiangqiBoardState extends State<XiangqiBoard> {
       _checkmateSoundPly = after.ply;
       unawaited(_play('checkmate.wav'));
     }
+    _syncTicker();
+  }
+
+  /// Chỉ chạy nhịp khi thật sự có đồng hồ đang đếm.
+  ///
+  /// Vẽ lại mỗi giây một bàn cờ 90 điểm khi không có gì thay đổi là phí pin
+  /// một cách lặng lẽ, đúng loại lãng phí không ai phát hiện ra.
+  void _syncTicker() {
+    final needed = widget.view.clocks.values.any((clock) => clock.running) &&
+        !widget.view.isFinished;
+    if (needed && _ticker == null) {
+      _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
+    } else if (!needed) {
+      _ticker?.cancel();
+      _ticker = null;
+    }
   }
 
   Future<void> _play(String name) async {
@@ -79,6 +141,8 @@ class _XiangqiBoardState extends State<XiangqiBoard> {
 
   @override
   void dispose() {
+    _ticker?.cancel();
+    _slide.dispose();
     _sound?.dispose();
     super.dispose();
   }
@@ -112,92 +176,6 @@ class _XiangqiBoardState extends State<XiangqiBoard> {
     }
   }
 
-  Widget _actions(XiangqiState state) {
-    final result = widget.view.result ?? state.terminalResult;
-    if (result != null) {
-      final message = switch (result.reason) {
-        'DRAW_AGREED' => 'Hai bên đã đồng ý hòa',
-        'DRAW_REJECTED_THREE_TIMES' => result.winners.contains(widget.view.me)
-            ? 'Đối thủ thua vì bị từ chối cầu hòa 3 lần'
-            : 'Bạn thua vì bị từ chối cầu hòa 3 lần',
-        'RESIGN' => result.winners.contains(widget.view.me)
-            ? 'Đối thủ đã xin thua'
-            : 'Bạn đã xin thua',
-        _ => null,
-      };
-      return SizedBox(
-        height: 52,
-        child: Center(
-          child: message == null
-              ? null
-              : Text(message,
-                  maxLines: 2,
-                  textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis),
-        ),
-      );
-    }
-    if (state.drawOfferBy == widget.view.me) {
-      return const SizedBox(
-        height: 52,
-        child: Center(child: Text('Đang chờ đối thủ trả lời cầu hòa…')),
-      );
-    }
-    if (state.drawOfferBy != null) {
-      final canRespond = widget.view.canAct;
-      return SizedBox(
-        height: 52,
-        child: Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Đối thủ cầu hòa',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-            TextButton(
-              onPressed: canRespond
-                  ? () => _send(state, const XiangqiDrawReject())
-                  : null,
-              child: const Text('Từ chối'),
-            ),
-            FilledButton(
-              onPressed: canRespond
-                  ? () => _send(state, const XiangqiDrawAccept())
-                  : null,
-              child: const Text('Đồng ý'),
-            ),
-          ],
-        ),
-      );
-    }
-    final canDecide =
-        widget.view.canAct && state.currentPlayer == widget.view.me;
-    final rejected = state.drawRejectionsOf(widget.view.me);
-    return SizedBox(
-      height: 52,
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton(
-              onPressed: canDecide && rejected < 3
-                  ? () => _send(state, const XiangqiDrawOffer())
-                  : null,
-              child: Text('Cầu hòa ($rejected/3)'),
-            ),
-          ),
-          const SizedBox(width: 8),
-          TextButton(
-            onPressed: canDecide ? () => _confirmResign(state) : null,
-            child: const Text('Xin thua'),
-          ),
-        ],
-      ),
-    );
-  }
-
   void _tap(XiangqiState state, int index) {
     if (!widget.view.canAct || state.currentPlayer != widget.view.me) return;
     final piece = state.board[index];
@@ -213,246 +191,347 @@ class _XiangqiBoardState extends State<XiangqiBoard> {
     }
   }
 
+  PlayerId? get _opponent =>
+      otherPlayer(widget.view.seatOrder, widget.view.me);
+
+  /// Tỉ số nhìn từ phía [who]. Null khi chưa biết đối thủ là ai — lúc đó một
+  /// con số đứng lẻ không nói lên điều gì.
+  GameScore? _scoreOf(PlayerId? who, PlayerId? against) {
+    if (who == null || against == null) return null;
+    final series = widget.view.series;
+    return GameScore(
+      wins: series.winsOf(who),
+      opponentWins: series.winsOf(against),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = _game.decodeState(widget.view.state);
+    final me = widget.view.me;
+    final opponent = _opponent;
+    final myColor = state.pieceColorOf(me);
+
     final targets = _selected != null &&
             widget.view.canAct &&
             state.drawOfferBy == null &&
-            state.currentPlayer == widget.view.me
-        ? XiangqiGame.legalMovesFor(state, widget.view.me)
+            state.currentPlayer == me
+        ? XiangqiGame.legalMovesFor(state, me)
             .where((move) => move.from == _selected)
             .map((move) => move.to)
             .toSet()
         : <int>{};
 
-    return LayoutBuilder(builder: (context, constraints) {
-      const capturedRowsHeight = 60.0;
-      final width = math.min(
-        math.min(constraints.maxWidth, 520.0),
-        math.max(0, constraints.maxHeight - 52 - capturedRowsHeight) / 1.135,
-      );
-      final step = width / 10;
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SizedBox(
-              width: width,
-              child: _CapturedRow(
-                color: XiangqiPieceColor.black,
-                pieces: state.capturedPieces
-                    .where((piece) => piece.isBlack)
-                    .toList(growable: false),
-                discSize: math.min(24, step * 0.65),
-              ),
-            ),
-            SizedBox(
-              width: width,
-              height: step * 11.35,
-              child: Stack(children: [
-                const Positioned.fill(
-                    child: CustomPaint(painter: _BoardPainter())),
-                for (var index = 0; index < XiangqiGame.totalCells; index++)
-                  Positioned(
-                    left: step * (1 + index % 9) - step / 2,
-                    top: step * (1 + index ~/ 9) - step / 2,
-                    width: step,
-                    height: step,
-                    child: Semantics(
-                      label:
-                          'Giao điểm hàng ${index ~/ 9 + 1}, cột ${index % 9 + 1}',
-                      button: true,
-                      child: GestureDetector(
-                        key: ValueKey('cell-$index'),
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => _tap(state, index),
-                        child: Center(
-                          child: Stack(
-                            alignment: Alignment.center,
-                            clipBehavior: Clip.none,
-                            children: [
-                              if (state.lastMove?.from == index)
-                                Container(
-                                  key: ValueKey('last-from-$index'),
-                                  width: step * 0.20,
-                                  height: step * 0.20,
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFDE7229),
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                              if (state.board[index] != null)
-                                _Disc(
-                                  key: state.lastMove?.to == index
-                                      ? ValueKey('last-to-$index')
-                                      : null,
-                                  piece: state.board[index]!,
-                                  size: step * 0.86,
-                                  selected: _selected == index,
-                                  lastMoved: state.lastMove?.to == index,
-                                ),
-                              if (targets.contains(index))
-                                _TargetDot(index: index, size: step * 0.18),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-              ]),
-            ),
-            SizedBox(
-              width: width,
-              child: _CapturedRow(
-                color: XiangqiPieceColor.red,
-                pieces: state.capturedPieces
-                    .where((piece) => piece.isRed)
-                    .toList(growable: false),
-                discSize: math.min(24, step * 0.65),
-              ),
-            ),
-            SizedBox(width: width, child: _actions(state)),
-          ],
-        ),
-      );
-    });
-  }
-}
+    // Quân của phe nào bị bắt thì thuộc về phe kia: thẻ của một người liệt kê
+    // chiến lợi phẩm của người đó, không phải tổn thất.
+    List<XiangqiPiece> capturedBy(XiangqiPieceColor color) => state
+        .capturedPieces
+        .where((piece) => piece.color != color)
+        .toList(growable: false);
 
-class _CapturedRow extends StatelessWidget {
-  const _CapturedRow({
-    required this.color,
-    required this.pieces,
-    required this.discSize,
-  });
-
-  final XiangqiPieceColor color;
-  final List<XiangqiPiece> pieces;
-  final double discSize;
-
-  @override
-  Widget build(BuildContext context) {
-    final side = color == XiangqiPieceColor.black ? 'Đen' : 'Đỏ';
-    return Container(
-      height: 30,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF3E3CE),
-        borderRadius: BorderRadius.circular(8),
+    final opponentCard = XiangqiPlayerCard(
+      name: opponent == null ? 'Đối thủ' : widget.view.nicknameOf(opponent),
+      subtitle: widget.opponentSubtitle ?? _subtitleFor(opponent, state),
+      color: myColor == XiangqiPieceColor.red
+          ? XiangqiPieceColor.black
+          : XiangqiPieceColor.red,
+      captured: capturedBy(
+        myColor == XiangqiPieceColor.red
+            ? XiangqiPieceColor.black
+            : XiangqiPieceColor.red,
       ),
-      child: Row(
-        children: [
-          Text(
-            '$side mất (${pieces.length})',
-            style: TextStyle(
-              color: color == XiangqiPieceColor.black ? _black : _red,
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-            ),
+      clock: opponent == null ? null : widget.view.clocks[opponent],
+      score: _scoreOf(opponent, me),
+      isTheirTurn: opponent != null &&
+          widget.view.currentActors.contains(opponent) &&
+          !widget.view.isFinished,
+    );
+
+    final myCard = XiangqiPlayerCard(
+      name: widget.view.nicknameOf(me),
+      subtitle: _subtitleFor(me, state),
+      color: myColor,
+      captured: capturedBy(myColor),
+      clock: widget.view.clocks[me],
+      score: _scoreOf(me, opponent),
+      isTheirTurn: widget.view.isMyTurn && !widget.view.isFinished,
+    );
+
+    return ColoredBox(
+      color: XiangqiColors.page,
+      child: LayoutBuilder(builder: (context, constraints) {
+        // Hai thẻ + dải trạng thái + hàng nút + lề. Đo bằng hằng số thay vì
+        // đo thật vì bàn cờ phải biết bề rộng của mình TRƯỚC khi những thứ
+        // kia được dựng — và vì mọi thành phần ở đây đều cao cố định, đúng để
+        // bàn cờ không đổi kích thước giữa ván.
+        final chromeHeight = XiangqiPlayerCard.height * 2 +
+            GameStatusLine.height +
+            GameActionButton.barHeight +
+            38;
+        // Trừ lề hai bên: bàn cờ phải biết bề rộng của mình trước khi nó nằm
+        // vào trong lớp padding bên dưới.
+        final width = math.min(
+          math.min(constraints.maxWidth - 28, 520.0),
+          math.max(120, constraints.maxHeight - chromeHeight) / 1.135,
+        );
+
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(14, 6, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              opponentCard,
+              _statusLine(state),
+              Center(child: _board(state, width, targets)),
+              const SizedBox(height: 10),
+              myCard,
+              const SizedBox(height: 10),
+              _actions(state),
+            ],
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: pieces.isEmpty
-                ? const Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text('—'),
-                  )
-                : ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: pieces.length,
-                    itemBuilder: (context, index) {
-                      final piece = pieces[pieces.length - 1 - index];
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 3),
-                        child: Center(
-                          child: _Disc(
-                            key: ValueKey('captured-${color.name}-$index'),
-                            piece: piece,
-                            size: discSize,
-                            selected: false,
-                            lastMoved: false,
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-          ),
-        ],
-      ),
+        );
+      }),
     );
   }
-}
 
-class _Disc extends StatelessWidget {
-  const _Disc(
-      {required this.piece,
-      required this.size,
-      required this.selected,
-      required this.lastMoved,
-      super.key});
-  final XiangqiPiece piece;
-  final double size;
-  final bool selected;
-  final bool lastMoved;
+  String _subtitleFor(PlayerId? player, XiangqiState state) {
+    if (player == null) return 'Chưa có ai';
+    if (widget.view.isFinished) return 'Ván đã xong';
+    if (state.drawOfferBy == player) return 'Đang cầu hòa';
+    return widget.view.currentActors.contains(player)
+        ? 'Đang đến lượt'
+        : 'Đang chờ';
+  }
 
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: size,
-      height: size,
-      foregroundDecoration: lastMoved
-          ? BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: const Color(0xFFF2A23A),
-                width: size * 0.075,
-              ),
-            )
-          : null,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: piece.isRed ? _red : _black,
-        border: Border.all(color: _paper, width: size * 0.045),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0x88000000),
-            blurRadius: size * 0.12,
-            offset: Offset(1, size * 0.08),
-          ),
-          if (selected)
-            BoxShadow(
-              color: const Color(0xFFFFC34C),
-              blurRadius: size * 0.2,
-              spreadRadius: size * 0.06,
-            ),
-        ],
+  /// Kéo quân vừa đi lùi về điểm xuất phát rồi thả cho nó trượt tới đích.
+  ///
+  /// Dịch chuyển bằng [Transform] chứ không đổi `Positioned`: quân vẫn nằm
+  /// đúng ô của nó trong cây widget nên chạm vào đâu vẫn ra ô đó, kể cả giữa
+  /// lúc đang trượt.
+  Widget _slidingDisc({
+    required int index,
+    required double step,
+    required Widget child,
+  }) {
+    if (index != _slideTo || _slideFrom == null) return child;
+    final delta = Offset(
+      (_slideFrom! % 9 - index % 9) * step,
+      (_slideFrom! ~/ 9 - index ~/ 9) * step,
+    );
+    return AnimatedBuilder(
+      animation: _slide,
+      builder: (context, child) => Transform.translate(
+        offset: delta * (1 - GameMotion.curve.transform(_slide.value)),
+        child: child,
       ),
-      child: Padding(
-        padding: EdgeInsets.all(size * 0.09),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.white70),
-          ),
-          child: Center(
-            child: Text(
-              piece.glyph,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: size * 0.57,
-                height: 1,
-                fontFamily: 'XiangqiBrush',
-                package: 'game_xiangqi',
+      child: child,
+    );
+  }
+
+  Widget _board(XiangqiState state, double width, Set<int> targets) {
+    final step = width / 10;
+    return SizedBox(
+      width: width,
+      height: step * 11.35,
+      child: Stack(children: [
+        const Positioned.fill(child: CustomPaint(painter: _BoardPainter())),
+        for (var index = 0; index < XiangqiGame.totalCells; index++)
+          Positioned(
+            left: step * (1 + index % 9) - step / 2,
+            top: step * (1 + index ~/ 9) - step / 2,
+            width: step,
+            height: step,
+            child: Semantics(
+              label: 'Giao điểm hàng ${index ~/ 9 + 1}, cột ${index % 9 + 1}',
+              button: true,
+              child: GestureDetector(
+                key: ValueKey('cell-$index'),
+                behavior: HitTestBehavior.opaque,
+                onTap: () => _tap(state, index),
+                child: Center(
+                  child: Stack(
+                    alignment: Alignment.center,
+                    clipBehavior: Clip.none,
+                    children: [
+                      if (state.lastMove?.from == index)
+                        Container(
+                          key: ValueKey('last-from-$index'),
+                          width: step * 0.20,
+                          height: step * 0.20,
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFDE7229),
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      if (state.board[index] != null)
+                        _slidingDisc(
+                          index: index,
+                          step: step,
+                          child: XiangqiDisc(
+                            key: state.lastMove?.to == index
+                                ? ValueKey('last-to-$index')
+                                : null,
+                            piece: state.board[index]!,
+                            size: step * 0.86,
+                            selected: _selected == index,
+                            lastMoved: state.lastMove?.to == index,
+                          ),
+                        ),
+                      if (targets.contains(index))
+                        _TargetDot(index: index, size: step * 0.18),
+                    ],
+                  ),
+                ),
               ),
             ),
+          ),
+      ]),
+    );
+  }
+
+  /// Dải "• LƯỢT CỦA BẠN" giữa thẻ đối thủ và bàn cờ.
+  Widget _statusLine(XiangqiState state) {
+    final view = widget.view;
+    final result = view.result ?? state.terminalResult;
+    if (result != null) {
+      final message = switch (result.reason) {
+        'DRAW_AGREED' => 'HAI BÊN ĐÃ ĐỒNG Ý HÒA',
+        'DRAW_REJECTED_THREE_TIMES' => result.winners.contains(view.me)
+            ? 'ĐỐI THỦ THUA VÌ BỊ TỪ CHỐI CẦU HÒA 3 LẦN'
+            : 'BẠN THUA VÌ BỊ TỪ CHỐI CẦU HÒA 3 LẦN',
+        'RESIGN' => result.winners.contains(view.me)
+            ? 'ĐỐI THỦ ĐÃ XIN THUA'
+            : 'BẠN ĐÃ XIN THUA',
+        'MOVE_TIMEOUT' || 'MATCH_TIMEOUT' => result.winners.contains(view.me)
+            ? 'ĐỐI THỦ HẾT GIỜ'
+            : 'BẠN ĐÃ HẾT GIỜ',
+        _ => result.isDraw
+            ? 'VÁN HÒA'
+            : (result.winners.contains(view.me) ? 'BẠN THẮNG' : 'BẠN THUA'),
+      };
+      return GameStatusLine(text: message, color: XiangqiColors.muted);
+    }
+    if (view.hasPendingAction) {
+      return const GameStatusLine(
+        text: 'ĐANG GỬI NƯỚC ĐI…',
+        color: XiangqiColors.muted,
+      );
+    }
+    final side = state.pieceColorOf(view.me) == XiangqiPieceColor.red
+        ? 'ĐỎ'
+        : 'ĐEN';
+    return view.isMyTurn
+        ? GameStatusLine(
+            text: '• LƯỢT CỦA BẠN · $side',
+            color: XiangqiColors.red,
+          )
+        : const GameStatusLine(
+            text: '• LƯỢT ĐỐI THỦ',
+            color: XiangqiColors.muted,
+          );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Hàng nút
+  // ---------------------------------------------------------------------------
+
+  Widget _actions(XiangqiState state) => SizedBox(
+        height: GameActionButton.barHeight,
+        child: AnimatedSwitcher(
+          duration: GameMotion.quick,
+          switchInCurve: GameMotion.curve,
+          switchOutCurve: GameMotion.curveIn,
+          child: _actionsContent(state),
+        ),
+      );
+
+  Widget _actionsContent(XiangqiState state) {
+    if (widget.view.isFinished || state.terminalResult != null) {
+      return const SizedBox.shrink(key: ValueKey('done'));
+    }
+
+    // Đang có lời cầu hòa treo thì hàng nút đổi thành câu trả lời: để nguyên
+    // ba nút cũ và nhét thêm hai nút nữa là bắt người chơi tìm.
+    if (state.drawOfferBy == widget.view.me) {
+      return const Center(
+        key: ValueKey('waiting-draw'),
+        child: Text(
+          'Đang chờ đối thủ trả lời cầu hòa…',
+          style: TextStyle(color: XiangqiColors.muted),
+        ),
+      );
+    }
+    if (state.drawOfferBy != null) {
+      final canRespond = widget.view.canAct;
+      return Row(key: const ValueKey('answer-draw'), children: [
+        const Expanded(
+          child: Text(
+            'Đối thủ cầu hòa',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 13, color: XiangqiColors.ink),
           ),
         ),
+        TextButton(
+          onPressed:
+              canRespond ? () => _send(state, const XiangqiDrawReject()) : null,
+          child: const Text('Từ chối'),
+        ),
+        const SizedBox(width: 6),
+        FilledButton(
+          onPressed:
+              canRespond ? () => _send(state, const XiangqiDrawAccept()) : null,
+          child: const Text('Đồng ý'),
+        ),
+      ]);
+    }
+
+    final canDecide = widget.view.canAct && state.currentPlayer == widget.view.me;
+    final rejected = state.drawRejectionsOf(widget.view.me);
+
+    return Row(key: const ValueKey('actions'), children: [
+      Expanded(
+        child: widget.onUndo == null
+            ? GameActionButton(
+                icon: Icons.list_rounded,
+                label: 'Nước đi',
+                onPressed: () => showXiangqiMoveList(context, state),
+              )
+            : GameActionButton(
+                icon: Icons.undo_rounded,
+                label: 'Hoàn tác',
+                onPressed: state.moveLog.isEmpty ? null : widget.onUndo,
+              ),
       ),
-    );
+      const SizedBox(width: 8),
+      Expanded(
+        child: GameActionButton(
+          icon: Icons.handshake_outlined,
+          // Số lần bị từ chối chỉ hiện khi đã có: bị từ chối 3 lần là thua,
+          // nên khi nó bắt đầu đếm thì người chơi phải thấy.
+          label: rejected == 0 ? 'Cầu hòa' : 'Cầu hòa ($rejected/3)',
+          onPressed: canDecide && rejected < 3
+              ? () => _send(state, const XiangqiDrawOffer())
+              : null,
+        ),
+      ),
+      const SizedBox(width: 8),
+      Expanded(
+        child: GameActionButton(
+          icon: Icons.flag_outlined,
+          label: 'Xin thua',
+          danger: true,
+          onPressed: canDecide ? () => _confirmResign(state) : null,
+        ),
+      ),
+    ]);
   }
 }
 
+/// Dải "• LƯỢT CỦA BẠN" giữa thẻ đối thủ và bàn cờ.
+///
+/// Nằm ngay trên bàn cờ chứ không phải trên cùng màn hình: mắt đang ở bàn cờ,
+/// và đây là câu duy nhất người chơi cần đọc lại sau mỗi nước.
 class _TargetDot extends StatelessWidget {
   const _TargetDot({required this.index, required this.size});
 
@@ -465,12 +544,13 @@ class _TargetDot extends StatelessWidget {
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: _red,
+          color: XiangqiColors.red,
           shape: BoxShape.circle,
-          border: Border.all(color: _paper, width: math.max(1, size * 0.12)),
-          boxShadow: const [
-            BoxShadow(color: Color(0x66000000), blurRadius: 3),
-          ],
+          border: Border.all(
+            color: XiangqiColors.paper,
+            width: math.max(1, size * 0.12),
+          ),
+          boxShadow: const [BoxShadow(color: Color(0x66000000), blurRadius: 3)],
         ),
       );
 }
@@ -478,12 +558,14 @@ class _TargetDot extends StatelessWidget {
 class _BoardPainter extends CustomPainter {
   const _BoardPainter();
 
+  static const _ink = Color(0xFFB96B2C);
+
   @override
   void paint(Canvas canvas, Size size) {
     final s = size.width / 10;
     final background = Paint()
       ..shader = const LinearGradient(
-        colors: [Color(0xFFF4E1C8), _paper, Color(0xFFEFD9BA)],
+        colors: [Color(0xFFF4E1C8), XiangqiColors.paper, Color(0xFFEFD9BA)],
       ).createShader(Offset.zero & size);
     canvas.drawRRect(
       RRect.fromRectAndRadius(Offset.zero & size, Radius.circular(s * 0.35)),

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:game_audio/game_audio.dart';
 import 'package:platform_core/platform_core.dart';
@@ -7,6 +8,7 @@ import 'package:platform_core/platform_core.dart';
 import '../logic/xiangqi.dart';
 import '../logic/xiangqi_ai.dart';
 import 'xiangqi_board.dart';
+import 'xiangqi_theme.dart';
 
 /// Chơi cờ tướng với máy, ngay trên một thiết bị.
 ///
@@ -19,6 +21,8 @@ class XiangqiLocalGameScreen extends StatefulWidget {
   State<XiangqiLocalGameScreen> createState() => _XiangqiLocalGameScreenState();
 }
 
+enum _Menu { sideRed, sideBlack, newGame }
+
 class _XiangqiLocalGameScreenState extends State<XiangqiLocalGameScreen> {
   static const _game = XiangqiGame();
 
@@ -28,7 +32,22 @@ class _XiangqiLocalGameScreenState extends State<XiangqiLocalGameScreen> {
 
   XiangqiDifficulty _difficulty = XiangqiDifficulty.hard;
   late XiangqiState _state;
+
+  /// Các thế cờ trước đó, để hoàn tác.
+  ///
+  /// Giữ nguyên thế cờ thay vì tính ngược nước đi: cờ tướng có bắt quân, có
+  /// cầu hòa, có kết thúc — tính ngược tất cả những thứ đó là một hàm mới phải
+  /// tự kiểm chứng, còn giữ lại thì đúng theo định nghĩa.
+  final List<XiangqiState> _history = <XiangqiState>[];
+
   GameResult? _result;
+
+  /// Ti so tinh tu luc mo man hinh, cong don qua cac van.
+  ///
+  /// Dung chinh kieu ma host dung cho van qua mang, nen ban co ve ti so chi
+  /// co mot duong code — khong co chuyen hai che do hien hai kieu khac nhau.
+  SeriesScore _series = SeriesScore.empty;
+
   bool _computerThinking = false;
   int _round = 0;
 
@@ -42,6 +61,7 @@ class _XiangqiLocalGameScreenState extends State<XiangqiLocalGameScreen> {
     _round++;
     setState(() {
       _state = _game.createInitialState(const ['red', 'black'], seed: 0);
+      _history.clear();
       _result = null;
       _computerThinking = false;
     });
@@ -63,6 +83,32 @@ class _XiangqiLocalGameScreenState extends State<XiangqiLocalGameScreen> {
     _reset();
   }
 
+  /// Lùi lại tới lượt gần nhất của người chơi.
+  ///
+  /// Lùi một nước là trả về lượt của máy, và máy sẽ đi lại ngay — nhìn như
+  /// nút không có tác dụng. Nên lùi cho tới khi đến lượt người.
+  void _undo() {
+    if (_history.isEmpty || _computerThinking) return;
+    _round++; // Huỷ nước máy đang tính dở, nếu có.
+    setState(() {
+      while (_history.isNotEmpty) {
+        _state = _history.removeLast();
+        if (_state.currentPlayer == _humanSide) break;
+      }
+      _result = null;
+      _computerThinking = false;
+    });
+  }
+
+  /// Dat ket qua va cong diem cung mot cho.
+  ///
+  /// Moi duong van co the ket thuc deu di qua day, nen khong nhanh nao cong
+  /// diem hai lan hay quen cong.
+  void _settle(XiangqiState next) {
+    _result = _game.isFinished(next) ? _game.getResult(next) : null;
+    if (_result != null) _series = _series.after(_result!);
+  }
+
   void _playHuman(Map<String, dynamic> action) {
     if (_computerThinking ||
         _result != null ||
@@ -73,8 +119,9 @@ class _XiangqiLocalGameScreenState extends State<XiangqiLocalGameScreen> {
     if (!_game.validate(_state, _humanSide, move).isValid) return;
 
     setState(() {
+      _history.add(_state);
       _state = _game.apply(_state, _humanSide, move);
-      if (_game.isFinished(_state)) _result = _game.getResult(_state);
+      _settle(_state);
     });
     if (_result != null) return;
     if (move is XiangqiDrawOffer) {
@@ -95,41 +142,61 @@ class _XiangqiLocalGameScreenState extends State<XiangqiLocalGameScreen> {
         ? const XiangqiDrawAccept()
         : const XiangqiDrawReject();
     setState(() {
+      _history.add(_state);
       _state = _game.apply(_state, _computerSide, decision);
-      _result = _game.isFinished(_state) ? _game.getResult(_state) : null;
+      _settle(_state);
       _computerThinking = false;
     });
   }
+
+  /// Thời gian tối thiểu của một lượt máy.
+  ///
+  /// Dài hơn đường trượt của một quân, để quân người chơi đi xong hẳn rồi quân
+  /// máy mới cất bước. Là chờ *bù*, không cộng thêm vào thời gian máy đã nghĩ:
+  /// ở mức Chuyên gia máy nghĩ lâu hơn chừng này thì không phải chờ thêm.
+  static const _minimumTurn = Duration(milliseconds: 320);
 
   Future<void> _playComputer() async {
     final round = _round;
     setState(() => _computerThinking = true);
-    final delayMs = switch (_difficulty) {
-      XiangqiDifficulty.easy => 180,
-      XiangqiDifficulty.medium => 240,
-      XiangqiDifficulty.hard => 320,
-      XiangqiDifficulty.expert => 420,
-    };
-    await Future<void>.delayed(Duration(milliseconds: delayMs));
+
+    // Đợi khung hình chứa nước người chơi vừa đi được dựng xong hẳn, trước khi
+    // giao việc cho isolate nền.
+    await WidgetsBinding.instance.endOfFrame;
     if (!mounted || _result != null || round != _round) return;
 
-    final move = _chooseComputerMove();
-    if (move == null) {
+    final clock = Stopwatch()..start();
+    // Máy nghĩ ở isolate nền. Xem [pickXiangqiMove] để biết vì sao.
+    final encoded = await compute(
+      pickXiangqiMove,
+      XiangqiAiRequest(
+        state: _game.encodeState(_state),
+        actor: _computerSide,
+        difficulty: _difficulty,
+      ),
+    );
+    clock.stop();
+    if (!mounted || _result != null || round != _round) return;
+
+    if (encoded == null) {
       setState(() => _computerThinking = false);
       return;
     }
+    final move = _game.decodeAction(encoded);
 
-    if (round != _round) return;
+    final remaining = _minimumTurn - clock.elapsed;
+    if (remaining > Duration.zero) {
+      await Future<void>.delayed(remaining);
+      if (!mounted || _result != null || round != _round) return;
+    }
+
     final next = _game.apply(_state, _computerSide, move);
     setState(() {
+      _history.add(_state);
       _state = next;
-      _result = _game.isFinished(next) ? _game.getResult(next) : null;
+      _settle(next);
       _computerThinking = false;
     });
-  }
-
-  XiangqiMove? _chooseComputerMove() {
-    return XiangqiAi.pickMove(_state, _computerSide, _difficulty);
   }
 
   @override
@@ -138,106 +205,115 @@ class _XiangqiLocalGameScreenState extends State<XiangqiLocalGameScreen> {
       state: _game.encodeState(_state),
       me: _humanSide,
       seatOrder: const ['red', 'black'],
-      nicknames: const {'red': 'Đỏ', 'black': 'Đen'},
+      // Tên chứ không phải màu: màu đã nằm sẵn ở huy hiệu bên cạnh, để "Đỏ"
+      // ở cả hai chỗ thì thẻ đọc ra "Đỏ · Đỏ".
+      nicknames: {_humanSide: 'Bạn', _computerSide: 'Máy'},
       currentActors: _result == null ? _game.currentActors(_state) : const [],
       result: _result,
+      series: _series,
       onAction: _playHuman,
     );
 
     // Nhạc nền chạy suốt màn này và tắt khi rời đi. Ván qua mạng đã có nhạc
     // do màn phòng của app lo; màn chơi với máy là của game nên tự bọc lấy.
     return GameMusic(
-        child: Scaffold(
-      appBar: AppBar(
-        title: const Text('Cờ tướng - Chơi với máy'),
-        actions: [
-          const GameAudioButton(),
-          PopupMenuButton<String>(
-            tooltip: 'Chọn quân của bạn',
-            initialValue: _humanSide,
-            onSelected: (value) => _setHumanSide(value),
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'red', child: Text('Đỏ - đi trước')),
-              PopupMenuItem(value: 'black', child: Text('Đen - đi sau')),
-            ],
-          ),
-          PopupMenuButton<XiangqiDifficulty>(
-            tooltip: 'Chọn mức độ máy',
-            initialValue: _difficulty,
-            onSelected: (value) {
-              setState(() => _difficulty = value);
-              if (_state.currentPlayer == _computerSide &&
-                  !_computerThinking &&
-                  _result == null) {
-                unawaited(_playComputer());
-              }
-            },
-            itemBuilder: (context) => XiangqiDifficulty.values
-                .map(
-                  (level) => PopupMenuItem(
+      child: Scaffold(
+        backgroundColor: XiangqiColors.page,
+        appBar: gameAppBar(
+          context: context,
+          title: 'Cờ tướng',
+          background: XiangqiColors.page,
+          foreground: XiangqiColors.ink,
+          actions: [
+            const GameAudioButton(),
+            PopupMenuButton<Object>(
+              tooltip: 'Tuỳ chọn ván đấu',
+              icon: const Icon(Icons.more_vert_rounded,
+                  size: 20, color: XiangqiColors.ink),
+              iconSize: 20,
+              padding: EdgeInsets.zero,
+              style: IconButton.styleFrom(
+                backgroundColor: const Color(0xFFEFEDE8),
+                fixedSize: const Size(GameBarButton.size, GameBarButton.size),
+                minimumSize: const Size(GameBarButton.size, GameBarButton.size),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              onSelected: (value) {
+                switch (value) {
+                  case _Menu.sideRed:
+                    _setHumanSide('red');
+                  case _Menu.sideBlack:
+                    _setHumanSide('black');
+                  case _Menu.newGame:
+                    _reset();
+                  case final XiangqiDifficulty level:
+                    setState(() => _difficulty = level);
+                    if (_state.currentPlayer == _computerSide &&
+                        !_computerThinking &&
+                        _result == null) {
+                      unawaited(_playComputer());
+                    }
+                }
+              },
+              itemBuilder: (context) => [
+                CheckedPopupMenuItem(
+                  value: _Menu.sideRed,
+                  checked: _humanSide == 'red',
+                  child: const Text('Cầm Đỏ - đi trước'),
+                ),
+                CheckedPopupMenuItem(
+                  value: _Menu.sideBlack,
+                  checked: _humanSide == 'black',
+                  child: const Text('Cầm Đen - đi sau'),
+                ),
+                const PopupMenuDivider(),
+                for (final level in XiangqiDifficulty.values)
+                  CheckedPopupMenuItem(
                     value: level,
-                    child: Text(_labelForXiangqiDifficulty(level)),
+                    checked: _difficulty == level,
+                    child: Text(labelForXiangqiDifficulty(level)),
                   ),
-                )
-                .toList(),
-          ),
-          IconButton(
-            onPressed: _reset,
-            tooltip: 'Ván mới',
-            icon: const Icon(Icons.refresh_rounded),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 4),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _result == null
-                      ? (_computerThinking
-                          ? 'Máy đang nghĩ...'
-                          : (_state.currentPlayer == _humanSide
-                              ? 'Lượt của bạn'
-                              : 'Lượt máy'))
-                      : (_result!.winners.contains(_humanSide)
-                          ? 'Bạn thắng!'
-                          : _result!.isDraw
-                              ? 'Ván hòa'
-                              : 'Máy thắng'),
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Mức máy: ${_labelForXiangqiDifficulty(_difficulty)}',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                Text(
-                  'Nhóm Elo tham chiếu; sức cờ chưa được hiệu chuẩn bằng đấu thử.',
-                  style: Theme.of(context).textTheme.bodySmall,
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: _Menu.newGame,
+                  child: Text('Ván mới'),
                 ),
               ],
             ),
-          ),
-          Expanded(child: XiangqiBoard(view: view)),
-          if (_result != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-              child: FilledButton.icon(
-                onPressed: _reset,
-                icon: const Icon(Icons.replay_rounded),
-                label: const Text('Chơi ván mới'),
+          ],
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: XiangqiBoard(
+                view: view,
+                onUndo: _undo,
+                opponentSubtitle: _computerThinking
+                    ? 'Đang nghĩ…'
+                    : labelForXiangqiDifficulty(_difficulty),
               ),
             ),
-        ],
+            if (_result != null)
+              Container(
+                width: double.infinity,
+                color: XiangqiColors.page,
+                padding: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+                child: FilledButton.icon(
+                  onPressed: _reset,
+                  icon: const Icon(Icons.replay_rounded),
+                  label: const Text('Chơi ván mới'),
+                ),
+              ),
+          ],
+        ),
       ),
-    ));
+    );
   }
 }
 
-String _labelForXiangqiDifficulty(XiangqiDifficulty level) {
+String labelForXiangqiDifficulty(XiangqiDifficulty level) {
   switch (level) {
     case XiangqiDifficulty.easy:
       return 'Tập sự';

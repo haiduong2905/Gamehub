@@ -1,4 +1,6 @@
 import '../protocol/ids.dart';
+import '../room/player_clock.dart';
+import '../room/series_score.dart';
 import 'game_result.dart';
 
 /// Moi thu mot man hinh game can de ve, va cach no gui nuoc di di.
@@ -19,6 +21,8 @@ class GameView {
     required this.nicknames,
     required this.currentActors,
     required this.onAction,
+    this.clocks = const {},
+    this.series = SeriesScore.empty,
     this.pendingActionId,
     this.result,
   });
@@ -37,6 +41,13 @@ class GameView {
 
   /// Nuoc di dang cho host xac nhan. Man hinh game dung de ve trang thai mo.
   final String? pendingActionId;
+
+  /// Dong ho cua tung nguoi, da dong dau theo gio cua may nay. Rong = van
+  /// khong tinh gio, man hinh game khong ve dong ho nao ca.
+  final Map<PlayerId, PlayerClock> clocks;
+
+  /// Ti so thang - thua cua ca loat van. Rong = chua co van nao tinh diem.
+  final SeriesScore series;
 
   /// Khac null khi van da ket thuc.
   final GameResult? result;

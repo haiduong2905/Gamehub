@@ -188,3 +188,38 @@ class _SearchBudget {
 class _SearchLimit implements Exception {
   const _SearchLimit();
 }
+
+/// Dữ liệu đủ cho một lượt nghĩ của máy, ở dạng gửi được sang isolate khác.
+///
+/// Thế cờ đi ở dạng JSON đã mã hóa — đúng dạng giao thức vẫn dùng để truyền
+/// thế cờ qua mạng, nên chắc chắn gửi được và đã có golden test canh.
+class XiangqiAiRequest {
+  const XiangqiAiRequest({
+    required this.state,
+    required this.actor,
+    required this.difficulty,
+  });
+
+  final Map<String, dynamic> state;
+  final PlayerId actor;
+  final XiangqiDifficulty difficulty;
+}
+
+/// Chọn nước cho máy — hàm top-level để chạy được ở isolate nền qua `compute`.
+///
+/// Trả về nước đã mã hóa, hoặc `null` khi không còn nước nào.
+///
+/// Vì sao ra isolate nền: alpha-beta chạy đồng bộ, và ngân sách của nó tính
+/// bằng **số nút duyệt** chứ không bằng thời gian — máy càng chậm thì lượt máy
+/// càng dài. Chạy trên luồng giao diện thì suốt lượt đó không khung hình nào
+/// được vẽ: quân người chơi vừa đi đứng im giữa đường trượt, và nếu khung hình
+/// chưa kịp dựng thì nước vừa đánh còn chưa hiện ra.
+Map<String, dynamic>? pickXiangqiMove(XiangqiAiRequest request) {
+  const game = XiangqiGame();
+  final move = XiangqiAi.pickMove(
+    game.decodeState(request.state),
+    request.actor,
+    request.difficulty,
+  );
+  return move == null ? null : game.encodeAction(move);
+}

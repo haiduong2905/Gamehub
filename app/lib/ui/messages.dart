@@ -35,18 +35,15 @@ String messageForCode(String? code, {String? fallback}) {
     'CONNECTION_LOST' => 'Mất kết nối tới phòng.',
 
     // Mạng
-    'NO_PERMISSION' =>
-      'Ứng dụng chưa được cấp quyền truy cập mạng nội bộ. '
-          'Hãy cấp quyền trong Cài đặt rồi thử lại.',
+    'NO_PERMISSION' => 'Ứng dụng chưa được cấp quyền truy cập mạng nội bộ. '
+        'Hãy cấp quyền trong Cài đặt rồi thử lại.',
     'TIMEOUT' =>
       'Không kết nối được. Kiểm tra xem hai máy có chung một mạng Wi-Fi không.',
     'REFUSED' => 'Phòng này không còn mở nữa.',
-    'UNREACHABLE' =>
-      'Không tới được máy kia. Thường là do hai máy khác mạng, '
-          'hoặc điện thoại đang ưu tiên dùng 4G thay vì Wi-Fi.',
+    'UNREACHABLE' => 'Không tới được máy kia. Thường là do hai máy khác mạng, '
+        'hoặc điện thoại đang ưu tiên dùng 4G thay vì Wi-Fi.',
     'HOST_FAILED' => 'Không mở được phòng.',
     'CONNECT_FAILED' => 'Không kết nối được tới phòng.',
-
     _ => fallback ?? 'Đã có lỗi xảy ra ($code).',
   };
 }
@@ -54,5 +51,7 @@ String messageForCode(String? code, {String? fallback}) {
 /// Lý do ván đấu kết thúc mà không phải do luật chơi.
 String messageForAbandonReason(String? reason) => switch (reason) {
       'OPPONENT_LEFT' => 'Đối thủ đã rời trận.',
+      'MOVE_TIMEOUT' => 'Hết giờ cho nước đi.',
+      'MATCH_TIMEOUT' => 'Hết thời gian của cả ván.',
       _ => 'Ván đấu bị bỏ dở.',
     };

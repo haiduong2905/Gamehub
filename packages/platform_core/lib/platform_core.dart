@@ -15,6 +15,8 @@ export 'src/protocol/message_codec.dart';
 export 'src/protocol/messages.dart';
 export 'src/room/room_client.dart';
 export 'src/room/room_host.dart';
+export 'src/room/player_clock.dart';
+export 'src/room/series_score.dart';
 export 'src/room/room_models.dart';
 export 'src/room/room_settings.dart';
 export 'src/session/game_session.dart';

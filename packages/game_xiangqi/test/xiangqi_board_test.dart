@@ -149,10 +149,19 @@ void main() {
           ),
         ),
       ));
-      expect(find.text('Đen mất (1)'), findsOneWidget);
-      expect(find.text('Đỏ mất (1)'), findsOneWidget);
-      expect(find.byKey(const ValueKey('captured-black-0')), findsOneWidget);
-      expect(find.byKey(const ValueKey('captured-red-0')), findsOneWidget);
+      // Mỗi bên đã bắt được đúng một quân, nên cả hai thẻ đều có dải "Đã bắt".
+      expect(find.text('Đã bắt'), findsNWidgets(2));
+      final cards = tester
+          .widgetList<XiangqiPlayerCard>(find.byType(XiangqiPlayerCard));
+      expect(cards, hasLength(2));
+      for (final card in cards) {
+        expect(
+          card.captured,
+          hasLength(1),
+          reason: 'quân bắt được phải nằm ở thẻ của NGƯỜI BẮT, '
+              'không phải thẻ của người bị mất quân',
+        );
+      }
       expect(tester.takeException(), isNull);
     }
   });
@@ -183,7 +192,7 @@ void main() {
     }
 
     await showBoard(view(initial, 'red', ['red']));
-    await tester.tap(find.text('Cầu hòa (0/3)'));
+    await tester.tap(find.text('Cầu hòa'));
     expect(action, {'type': 'offerDraw'});
 
     action = null;
@@ -201,5 +210,66 @@ void main() {
     await tester.pump();
     expect(action, {'type': 'resign'});
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bat quan dau tien khong lam bo cuc nhay len xuong',
+      (tester) async {
+    // Dai "Da bat" truoc day chi duoc dung khi da co quan, nen dung luc bat
+    // quan dau tien the cao them mot dong va ca trang - ban co, the duoi,
+    // hang nut - nhay len xuong. Bam "Van moi" giua chung cung vay, theo
+    // chieu nguoc lai.
+    const game = XiangqiGame();
+    final board = List<XiangqiPiece?>.filled(90, null);
+    board[4] = const XiangqiPiece(
+        color: XiangqiPieceColor.black, type: XiangqiPieceType.king);
+    board[85] = const XiangqiPiece(
+        color: XiangqiPieceColor.red, type: XiangqiPieceType.king);
+    board[40] = const XiangqiPiece(
+        color: XiangqiPieceColor.red, type: XiangqiPieceType.rook);
+    board[31] = const XiangqiPiece(
+        color: XiangqiPieceColor.black, type: XiangqiPieceType.pawn);
+    board[22] = const XiangqiPiece(
+        color: XiangqiPieceColor.black, type: XiangqiPieceType.rook);
+    final before = XiangqiState(
+        board: board, players: const ['red', 'black'], turnIndex: 0);
+    // Đỏ ăn tốt Đen, rồi Đen ăn lại Xe Đỏ: cả hai thẻ đều có quân.
+    final afterRed =
+        game.apply(before, 'red', const XiangqiMove(from: 40, to: 31));
+    final after =
+        game.apply(afterRed, 'black', const XiangqiMove(from: 22, to: 31));
+
+    Future<(List<Size> cards, double boardTop)> measure(
+        XiangqiState state) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: XiangqiBoard(
+            view: GameView(
+              state: game.encodeState(state),
+              me: 'red',
+              seatOrder: const ['red', 'black'],
+              nicknames: const {'red': 'Đỏ', 'black': 'Đen'},
+              currentActors: const ['red'],
+              onAction: (_) {},
+            ),
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      return (
+        tester
+            .widgetList<XiangqiPlayerCard>(find.byType(XiangqiPlayerCard))
+            .map((card) => tester.getSize(find.byWidget(card)))
+            .toList(),
+        tester.getTopLeft(find.byKey(const ValueKey('cell-0'))).dy,
+      );
+    }
+
+    final empty = await measure(before);
+    final withCapture = await measure(after);
+
+    expect(withCapture.$1, empty.$1,
+        reason: 'ca hai the phai cao y nguyen truoc va sau khi bat quan');
+    expect(withCapture.$2, empty.$2,
+        reason: 'ban co khong duoc bi day len xuong khi the tren no cao them');
   });
 }

@@ -1,10 +1,12 @@
 import '../game/game_result.dart';
+import '../room/player_clock.dart';
+import '../room/series_score.dart';
 import '../room/room_models.dart';
 import 'ids.dart';
 
 /// Phien ban protocol. Tang len khi thay doi khong tuong thich nguoc.
 /// Host va client khac phien ban se bi tu choi ngay o buoc JOIN.
-const int kProtocolVersion = 1;
+const int kProtocolVersion = 3;
 
 /// Ly do host gui lai snapshot phong, dung cho UI hien thong bao.
 enum RoomUpdateReason {
@@ -272,8 +274,8 @@ class GameStart extends Message {
     required this.state,
     required this.currentActors,
     required this.seatOrder,
-    this.gameDeadlineMillis,
-    this.turnDeadlineMillis,
+    this.playerClocks = const {},
+    this.series = SeriesScore.empty,
   });
 
   final GameId gameId;
@@ -285,8 +287,22 @@ class GameStart extends Message {
 
   /// Thu tu di, da chot luc bat dau van.
   final List<PlayerId> seatOrder;
-  final int? gameDeadlineMillis;
-  final int? turnDeadlineMillis;
+
+  /// Dong ho cua TUNG nguoi choi. Rong = van nay khong tinh gio.
+  ///
+  /// Mang SO MILI GIAY CON LAI tinh tu luc host gui, khong phai moc thoi
+  /// gian: gui moc tuyet doi thi nguoi nhan buoc phai tru theo dong ho cua
+  /// may minh, ma hai dien thoai lech gio bao nhieu thi so dem nguoc lech bay
+  /// nhieu, va khong co cach nao biet ai dung. Gui khoang thoi gian thi moi
+  /// may tu neo vao dong ho cua chinh no.
+  ///
+  /// Va la SO CON LAI chu khong phai gioi han da thiet lap: host gui lai
+  /// GAME_STATE ngay giua luot (nuoc di bi tu choi, gui trung, vao lai phong),
+  /// va luc do luot da troi di mot phan roi.
+  final Map<PlayerId, PlayerClock> playerClocks;
+
+  /// Ti so thang - thua cua ca loat van trong phong nay.
+  final SeriesScore series;
 
   @override
   String get type => 'GAME_START';
@@ -298,8 +314,8 @@ class GameStart extends Message {
         'state': state,
         'currentActors': currentActors,
         'seatOrder': seatOrder,
-        if (gameDeadlineMillis != null) 'gameDeadlineMillis': gameDeadlineMillis,
-        if (turnDeadlineMillis != null) 'turnDeadlineMillis': turnDeadlineMillis,
+        if (playerClocks.isNotEmpty) 'playerClocks': encodeClocks(playerClocks),
+        if (!series.isEmpty) 'series': series.toJson(),
       };
 
   static GameStart fromPayload(Map<String, dynamic> p) => GameStart(
@@ -312,8 +328,8 @@ class GameStart extends Message {
         seatOrder: (p['seatOrder'] as List<dynamic>)
             .map((dynamic e) => e as String)
             .toList(growable: false),
-          gameDeadlineMillis: p['gameDeadlineMillis'] as int?,
-          turnDeadlineMillis: p['turnDeadlineMillis'] as int?,
+        playerClocks: decodeClocks(p['playerClocks']),
+        series: SeriesScore.fromJson(p['series']),
       );
 }
 
@@ -324,8 +340,8 @@ class GameStateMessage extends Message {
     required this.state,
     required this.currentActors,
     this.lastActionId,
-    this.gameDeadlineMillis,
-    this.turnDeadlineMillis,
+    this.playerClocks = const {},
+    this.series = SeriesScore.empty,
   });
 
   final int stateVersion;
@@ -334,8 +350,12 @@ class GameStateMessage extends Message {
 
   /// Nuoc di vua duoc ap dung, de client bo trang thai "dang cho".
   final String? lastActionId;
-  final int? gameDeadlineMillis;
-  final int? turnDeadlineMillis;
+
+  /// Dong ho tung nguoi. Xem [GameStart.playerClocks].
+  final Map<PlayerId, PlayerClock> playerClocks;
+
+  /// Ti so thang - thua cua ca loat van trong phong nay.
+  final SeriesScore series;
 
   @override
   String get type => 'GAME_STATE';
@@ -346,8 +366,8 @@ class GameStateMessage extends Message {
         'state': state,
         'currentActors': currentActors,
         if (lastActionId != null) 'lastActionId': lastActionId,
-        if (gameDeadlineMillis != null) 'gameDeadlineMillis': gameDeadlineMillis,
-        if (turnDeadlineMillis != null) 'turnDeadlineMillis': turnDeadlineMillis,
+        if (playerClocks.isNotEmpty) 'playerClocks': encodeClocks(playerClocks),
+        if (!series.isEmpty) 'series': series.toJson(),
       };
 
   static GameStateMessage fromPayload(Map<String, dynamic> p) =>
@@ -358,8 +378,8 @@ class GameStateMessage extends Message {
             .map((dynamic e) => e as String)
             .toList(growable: false),
         lastActionId: p['lastActionId'] as String?,
-        gameDeadlineMillis: p['gameDeadlineMillis'] as int?,
-        turnDeadlineMillis: p['turnDeadlineMillis'] as int?,
+        playerClocks: decodeClocks(p['playerClocks']),
+        series: SeriesScore.fromJson(p['series']),
       );
 }
 
@@ -369,15 +389,19 @@ class GameResultMessage extends Message {
     required this.stateVersion,
     required this.state,
     required this.result,
-    this.gameDeadlineMillis,
-    this.turnDeadlineMillis,
+    this.playerClocks = const {},
+    this.series = SeriesScore.empty,
   });
 
   final int stateVersion;
   final Map<String, dynamic> state;
   final GameResult result;
-  final int? gameDeadlineMillis;
-  final int? turnDeadlineMillis;
+
+  /// Dong ho tung nguoi. Xem [GameStart.playerClocks].
+  final Map<PlayerId, PlayerClock> playerClocks;
+
+  /// Ti so thang - thua cua ca loat van trong phong nay.
+  final SeriesScore series;
 
   @override
   String get type => 'GAME_RESULT';
@@ -387,8 +411,8 @@ class GameResultMessage extends Message {
         'stateVersion': stateVersion,
         'state': state,
         'result': result.toJson(),
-        if (gameDeadlineMillis != null) 'gameDeadlineMillis': gameDeadlineMillis,
-        if (turnDeadlineMillis != null) 'turnDeadlineMillis': turnDeadlineMillis,
+        if (playerClocks.isNotEmpty) 'playerClocks': encodeClocks(playerClocks),
+        if (!series.isEmpty) 'series': series.toJson(),
       };
 
   static GameResultMessage fromPayload(Map<String, dynamic> p) =>
@@ -397,8 +421,8 @@ class GameResultMessage extends Message {
         state: (p['state'] as Map).cast<String, dynamic>(),
         result:
             GameResult.fromJson((p['result'] as Map).cast<String, dynamic>()),
-        gameDeadlineMillis: p['gameDeadlineMillis'] as int?,
-        turnDeadlineMillis: p['turnDeadlineMillis'] as int?,
+        playerClocks: decodeClocks(p['playerClocks']),
+        series: SeriesScore.fromJson(p['series']),
       );
 }
 
@@ -488,4 +512,26 @@ class UnknownMessage extends Message {
 
   @override
   Map<String, dynamic> toPayload() => payload;
+}
+
+/// Dong ho tung nguoi, dang gui di duoc.
+Map<String, dynamic> encodeClocks(Map<PlayerId, PlayerClock> clocks) => {
+      for (final entry in clocks.entries) entry.key: entry.value.toJson(),
+    };
+
+/// Doc dong ho tu ban tin, dong dau bang gio CUA MAY DANG GIAI MA.
+///
+/// Dong dau o day chu khong phai o cho goi la co chu dich: moi ban tin chi
+/// giai ma dung mot lan, ngay khi vua toi, nen day la thoi diem sat nhat voi
+/// luc host gui ma may nay biet duoc.
+Map<PlayerId, PlayerClock> decodeClocks(Object? raw) {
+  if (raw is! Map) return const {};
+  final now = DateTime.now().millisecondsSinceEpoch;
+  return {
+    for (final entry in raw.entries)
+      entry.key as PlayerId: PlayerClock.fromJson(
+        (entry.value as Map).cast<String, dynamic>(),
+        asOfMillis: now,
+      ),
+  };
 }

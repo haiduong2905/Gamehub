@@ -26,12 +26,12 @@ void main() {
       expect(
         jsonDecode(raw),
         {
-          'v': 1,
+          'v': 3,
           'type': 'JOIN_REQUEST',
           'payload': {
             'playerId': 'p1',
             'nickname': 'Vu',
-            'protocolVersion': 1,
+            'protocolVersion': 3,
           },
         },
       );
@@ -48,7 +48,7 @@ void main() {
       expect(
         jsonDecode(raw),
         {
-          'v': 1,
+          'v': 3,
           'type': 'GAME_ACTION',
           'payload': {
             'actionId': 'a1',
@@ -114,12 +114,20 @@ void main() {
         state: {'turnIndex': 0},
         currentActors: ['p1'],
         seatOrder: ['p1', 'p2'],
+        playerClocks: {
+          'p1': PlayerClock(moveMillis: 30000, matchMillis: 180000, running: true),
+          'p2': PlayerClock(moveMillis: 30000, matchMillis: 180000),
+        },
       ),
       'GAME_STATE': const GameStateMessage(
         stateVersion: 2,
         state: {'turnIndex': 1},
         currentActors: ['p2'],
         lastActionId: 'a1',
+        playerClocks: {
+          'p1': PlayerClock(moveMillis: 30000, matchMillis: 174320),
+          'p2': PlayerClock(moveMillis: 28110, matchMillis: 171004, running: true),
+        },
       ),
       'GAME_RESULT': GameResultMessage(
         stateVersion: 3,

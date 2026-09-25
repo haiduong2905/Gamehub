@@ -103,6 +103,7 @@ class XiangqiState {
     this.ply = 0,
     this.lastMoveWasCapture = false,
     this.capturedPieces = const [],
+    this.moveLog = const [],
     this.drawOfferBy,
     this.drawRejections = const [0, 0],
     this.terminalResult,
@@ -118,6 +119,12 @@ class XiangqiState {
 
   /// Quân đã bị ăn, theo thứ tự thời gian; màu là phe bị mất quân.
   final List<XiangqiPiece> capturedPieces;
+
+  /// Các nước đã đi, gói phẳng thành [from0, to0, from1, to1, ...].
+  ///
+  /// Gói phẳng chứ không phải danh sách đối tượng vì nó phải đi qua JSON mỗi
+  /// lượt: một danh sách số nguyên rẻ hơn hẳn một danh sách bản đồ.
+  final List<int> moveLog;
   final PlayerId? drawOfferBy;
   final List<int> drawRejections;
   final GameResult? terminalResult;
@@ -345,6 +352,7 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiAction> {
       capturedPieces: captured == null
           ? state.capturedPieces
           : [...state.capturedPieces, captured],
+      moveLog: [...state.moveLog, action.from, action.to],
       drawRejections: state.drawRejections,
     );
   }
@@ -363,6 +371,7 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiAction> {
         ply: state.ply,
         lastMoveWasCapture: state.lastMoveWasCapture,
         capturedPieces: state.capturedPieces,
+        moveLog: state.moveLog,
         drawRejections: drawRejections ?? state.drawRejections,
         terminalResult: result,
       );
@@ -418,6 +427,7 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiAction> {
             .map(
                 (piece) => {'color': piece.color.name, 'type': piece.type.name})
             .toList(),
+        if (state.moveLog.isNotEmpty) 'moveLog': state.moveLog,
         if (state.drawOfferBy != null) 'drawOfferBy': state.drawOfferBy,
         'drawRejections': state.drawRejections,
         if (state.terminalResult != null)
@@ -461,6 +471,7 @@ class XiangqiGame extends GameDefinition<XiangqiState, XiangqiAction> {
               .firstWhere((type) => type.name == piece['type']),
         );
       }).toList(growable: false),
+      moveLog: (json['moveLog'] as List<dynamic>? ?? const []).cast<int>(),
       drawOfferBy: json['drawOfferBy'] as String?,
       drawRejections: (json['drawRejections'] as List<dynamic>? ?? const [0, 0])
           .cast<int>(),

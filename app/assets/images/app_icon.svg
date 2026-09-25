@@ -1,4 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <!-- Nguồn thiết kế. Bộ PNG/ICO cho Android, iOS, web, Windows dựng bằng
+       `cd app && flutter test tool/render_app_icon_test.dart` — sửa hình ở đây
+       thì phải sửa cả bên đó, hai file phải khớp nhau. -->
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#0F172A"/><stop offset=".5" stop-color="#0B1120"/><stop offset="1" stop-color="#030712"/>
@@ -15,14 +18,17 @@
   </defs>
   <rect width="512" height="512" rx="112" fill="url(#bg)"/>
   <rect x="2" y="2" width="508" height="508" rx="110" fill="none" stroke="#38BDF8" stroke-width="2" stroke-opacity=".25"/>
-  <circle cx="256" cy="256" r="160" fill="none" stroke="#0284C7" stroke-width="4" stroke-dasharray="8 12" stroke-opacity=".4"/>
-  <g transform="translate(256 256)">
-    <path d="M0-100 86-50 0 0-86-50Z" fill="url(#top)"/>
-    <path d="M-43-25H43M0-75V25M-43-75 43-25M-43-25 43-75" stroke="#E0F2FE" stroke-width="3" stroke-opacity=".6" fill="none"/>
-    <path d="M-86-50 0 0V100L-86 50Z" fill="url(#left)"/>
-    <path d="M-43-25V75M-86 0 0 50M-86 25 0 75" stroke="#CFFAFE" stroke-width="3" stroke-opacity=".4" fill="none"/>
-    <path d="M0 0 86-50V50L0 100Z" fill="url(#right)"/>
-    <path d="M43-25V75M0 25 86-25M0 50 86 0" stroke="#38BDF8" stroke-width="3" stroke-opacity=".5" fill="none"/>
-    <path d="M0-100 86-50V50L0 100-86 50V-50Z" fill="none" stroke="#38BDF8" stroke-width="6"/>
+  <!-- Khối chiếm 66% chiều cao khung. Bản trước chỉ 39%, nhỏ tới mức ở cỡ
+       launcher 48px chỉ còn là một vệt xanh giữa một ô vuông đen. -->
+  <g transform="translate(256 256)" stroke-linecap="round">
+    <path d="M0-170 146-85 0 0-146-85Z" fill="url(#top)"/>
+    <path d="M-146-85 0 0V170L-146 85Z" fill="url(#left)"/>
+    <path d="M0 0 146-85V85L0 170Z" fill="url(#right)"/>
+    <!-- Mỗi mặt chia 2x2 chứ không phải 3x3: ở cỡ nhỏ ba đường kẻ trên một
+         mặt chỉ nhoè vào nhau thành một mảng xám. -->
+    <path d="M73-127.5-73-42.5M-73-127.5 73-42.5" stroke="#E0F2FE" stroke-width="7" stroke-opacity=".55" fill="none"/>
+    <path d="M-73-42.5V127.5M-146 0 0 85" stroke="#CFFAFE" stroke-width="7" stroke-opacity=".45" fill="none"/>
+    <path d="M73-42.5V127.5M0 85 146 0" stroke="#38BDF8" stroke-width="7" stroke-opacity=".55" fill="none"/>
+    <path d="M0-170 146-85V85L0 170-146 85V-85Z" fill="none" stroke="#38BDF8" stroke-width="10" stroke-linejoin="round"/>
   </g>
 </svg>

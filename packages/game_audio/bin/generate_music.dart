@@ -43,6 +43,11 @@ void main() {
     data.setInt16(44 + i * 2, (value * 32767).round(), Endian.little);
   }
 
+  // Ghi ra `.wav` chứ không phải `.mp3`: hàm này tổng hợp mẫu PCM rồi đóng gói
+  // bằng `_writeWavHeader`, nó không biết mã hoá MP3. Đặt tên đuôi `.mp3` cho
+  // một file WAV thì trình phát của Android vẫn đoán ra được, nhưng lệnh này
+  // sẽ **đè mất** bản nhạc thật đang dùng — mà bản đó nặng gấp bảy lần và
+  // không dựng lại được từ đây.
   File('assets/music/ambient.wav').writeAsBytesSync(bytes);
   stdout.writeln('assets/music/ambient.wav  '
       '(${(bytes.length / 1024).round()} KB, ${loopSeconds.round()}s)');

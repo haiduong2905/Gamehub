@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:game_audio/game_audio.dart';
 
 /// Icon của cờ caro, vẽ bằng [CustomPaint] chứ không dùng file ảnh.
 ///
@@ -123,12 +124,14 @@ class _TicTacToeIconPainter extends CustomPainter {
 
     canvas.restore();
 
+    // Viền khung: cùng sắc vàng với nhãn mục và viền thẻ ở màn hình chủ, nên
+    // icon nằm trên trang nào cũng thuộc về trang đó.
     canvas.drawRRect(
-      tile.deflate(side * .01),
+      tile.deflate(side * .012),
       Paint()
-        ..color = const Color(0x22101828)
+        ..color = GameColors.frame
         ..style = PaintingStyle.stroke
-        ..strokeWidth = side * .02,
+        ..strokeWidth = side * .025,
     );
   }
 

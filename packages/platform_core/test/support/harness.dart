@@ -11,6 +11,7 @@ class RoomHarness {
     Duration rejoinGrace = const Duration(seconds: 30),
     Duration latency = Duration.zero,
     int? maxPlayers,
+    this.settings = const RoomSettings(),
   })  : network = LoopbackNetwork(latency: latency),
         _rejoinGrace = rejoinGrace,
         _maxPlayers = maxPlayers;
@@ -20,6 +21,7 @@ class RoomHarness {
   final LoopbackNetwork network;
   final Duration _rejoinGrace;
   final int? _maxPlayers;
+  final RoomSettings settings;
 
   late final RoomHost host;
   late final RoomClient hostClient;
@@ -46,6 +48,7 @@ class RoomHarness {
       displayName: displayName,
       hostPlayerId: hostPlayerId,
       maxPlayers: _maxPlayers,
+      settings: settings,
       rejoinGrace: _rejoinGrace,
     );
 

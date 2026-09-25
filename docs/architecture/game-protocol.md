@@ -3,7 +3,7 @@
 ## Khung bản tin
 
 ```json
-{ "v": 1, "type": "GAME_ACTION", "payload": { } }
+{ "v": 2, "type": "GAME_ACTION", "payload": { } }
 ```
 
 Cài đặt: [`messages.dart`](../../packages/platform_core/lib/src/protocol/messages.dart),
@@ -42,9 +42,9 @@ phép client gửi state hay kết quả lên.
 | `ROOM_JOINED` | you, roomSecret, snapshot | client lưu `roomSecret` để quay lại |
 | `JOIN_REJECTED` | code, message? | rồi đóng kết nối |
 | `ROOM_UPDATE` | snapshot, reason, actorPlayerId? | xem bên dưới |
-| `GAME_START` | gameId, stateVersion, state, currentActors, seatOrder | `state` đã lọc qua `viewFor` |
-| `GAME_STATE` | stateVersion, state, currentActors, lastActionId? | phát mỗi lượt |
-| `GAME_RESULT` | stateVersion, state, result | chỉ host được gửi |
+| `GAME_START` | gameId, stateVersion, state, currentActors, seatOrder, playerClocks?, series? | `state` đã lọc qua `viewFor`; đồng hồ và tỉ số xem bên dưới |
+| `GAME_STATE` | stateVersion, state, currentActors, lastActionId?, playerClocks?, series? | phát mỗi lượt |
+| `GAME_RESULT` | stateVersion, state, result, series? | chỉ host được gửi |
 | `ROOM_CLOSED` | code, message? | |
 | `ERROR` | code, message?, actionId? | không đóng kết nối |
 | `PONG` | nonce, sentAtMillis | |
@@ -99,3 +99,51 @@ qua `GameAdapter`. Nhờ vậy thêm game mới không phải sửa giao thức.
 Ngoại lệ duy nhất, và là ngoại lệ có chủ đích: `currentActors` — **game tự khai
 báo** ai đang đến lượt, để UI chung hiện được "Lượt của bạn" mà không phải hiểu
 luật. Platform không suy ra, chỉ nhận.
+
+## Đồng hồ: gửi *khoảng thời gian còn lại*, không gửi mốc thời gian
+
+`GAME_START`, `GAME_STATE` và `GAME_RESULT` mang `playerClocks` — mỗi người
+một cặp đồng hồ, ghi bằng **số mili giây còn lại tính từ lúc host gửi**. Máy
+nhận đóng dấu bằng đồng hồ của chính nó ngay lúc giải mã.
+
+Gửi mốc tuyệt đối (epoch millis) thì máy nhận buộc phải trừ theo đồng hồ của
+mình, mà hai điện thoại lệch giờ hệ thống bao nhiêu thì số đếm ngược lệch bấy
+nhiêu — và không có cách nào biết bên nào đúng. Gửi khoảng thời gian thì không
+có phép trừ nào bắc qua hai đồng hồ khác nhau.
+
+**Phải là số còn lại, không được là giới hạn đã thiết lập.** Host gửi lại
+`GAME_STATE` ngay giữa lượt trong nhiều tình huống — nước đi bị từ chối, bản
+tin trùng, người chơi vào lại phòng — và lúc đó lượt đã trôi đi một phần. Máy
+nhận cứ thấy bản tin là đếm lại từ giới hạn thì chạm nhầm vào ô không hợp lệ sẽ
+được cộng thêm thời gian. Có
+[test canh](../../packages/platform_core/test/room/deadline_test.dart) điều này.
+
+Độ trễ đường truyền (vài chục mili giây trên LAN) **không** được bù: bù đòi hỏi
+biết độ lệch một chiều, mà đo được chính xác thì đã phải đồng bộ đồng hồ — đúng
+thứ cách làm này tránh. Trên một đồng hồ tính bằng giây thì không ai thấy.
+
+Host vẫn là trọng tài: đồng hồ trên máy khách chỉ để hiển thị, còn `Timer` quyết
+định ván đấu hết giờ nằm ở host và chỉ so với đồng hồ của host.
+
+## Tỉ số cả loạt ván: host cộng, client chỉ hiển thị
+
+`series` mang số ván từng người đã thắng và số ván hoà, cộng dồn từ lúc mở
+phòng. Bấm "Chơi lại" là sang ván mới nhưng vẫn cùng một loạt đấu, nên tỉ số
+không đặt lại.
+
+**Client không được tự đếm.** Nghe có vẻ thừa — máy nào chẳng thấy đủ các bản
+tin `GAME_RESULT` — nhưng người vào phòng giữa chừng thì không, và người mất
+kết nối rồi quay lại cũng không. Lúc đó hai máy hiện hai tỉ số khác nhau mà
+không có cách nào biết cái nào đúng. Đây vẫn là ràng buộc "host là trọng tài
+duy nhất", áp cho một con số thay vì cho một nước đi.
+
+Host cộng điểm **trước** khi gửi `GAME_RESULT`, nên bản tin báo ván xong đã
+mang sẵn điểm của chính ván đó. Cộng sau thì tỉ số nhảy một nhịp muộn, ngay lúc
+người chơi đang đọc kết quả. Có
+[test canh](../../packages/platform_core/test/room/series_score_test.dart).
+
+Ván bỏ dở (`abandoned`) không tính cho ai: rút dây mạng không được phép trở
+thành một cách ghi điểm.
+
+Trường này là tuỳ chọn, nên host bản cũ không gửi thì client mới đọc ra tỉ số
+rỗng chứ không lỗi — vì vậy `kProtocolVersion` giữ nguyên.

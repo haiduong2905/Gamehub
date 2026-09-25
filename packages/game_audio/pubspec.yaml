@@ -1,5 +1,5 @@
 name: game_audio
-description: Cai dat va phat am thanh dung chung cho moi game trong Game Hub.
+description: Am thanh va khung man van dau dung chung cho moi game trong Game Hub.
 version: 0.1.0
 publish_to: none
 
@@ -12,6 +12,11 @@ dependencies:
     sdk: flutter
   audioplayers: ^6.8.1
 
+  # Khung man van dau dung chung can doc PlayerClock cua core.
+  # Core la pure Dart, khong phu thuoc gi, nen khong the sinh vong tron.
+  platform_core:
+    path: ../platform_core
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -19,4 +24,4 @@ dev_dependencies:
 
 flutter:
   assets:
-    - assets/music/ambient.wav
+    - assets/music/ambient.mp3

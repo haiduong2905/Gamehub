@@ -7,7 +7,7 @@
 /// Chiều phụ thuộc:
 ///
 /// ```
-/// game_audio  ->  flutter + audioplayers
+/// game_audio  ->  flutter + audioplayers + platform_core
 /// game_*      ->  platform_core, game_audio
 /// app         ->  tất cả
 /// ```
@@ -18,5 +18,7 @@ library;
 
 export 'src/audio_settings.dart';
 export 'src/game_audio_button.dart';
+export 'src/game_board_ui.dart';
+export 'src/game_chrome.dart';
 export 'src/game_music.dart';
 export 'src/game_sound_player.dart';

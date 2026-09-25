@@ -362,10 +362,12 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Lượt của bạn'), findsOneWidget);
+      expect(find.text('• LƯỢT CỦA BẠN · X'), findsOneWidget);
       const cells = TicTacToeGame.boardSize * TicTacToeGame.boardSize;
-      expect(find.byType(AnimatedContainer), findsNWidgets(cells),
-          reason: 'mỗi ô bàn cờ là một AnimatedContainer');
+      // Ô đầu và ô cuối đều dựng ra: bàn cờ thật sự là 20x20 chứ không phải
+      // một phần của nó.
+      expect(find.byKey(const ValueKey('cell-0')), findsOneWidget);
+      expect(find.byKey(ValueKey('cell-${cells - 1}')), findsOneWidget);
 
       // Việc chạm ô rồi nước đi chạy qua host được kiểm tra ở hai chỗ khác,
       // mỗi chỗ đúng tầng của nó: test đầu file kiểm tra trọn ván qua đúng

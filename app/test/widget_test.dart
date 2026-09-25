@@ -13,13 +13,16 @@ void main() {
       const MaterialApp(home: XiangqiLocalGameScreen()),
     );
     for (var rejected = 0; rejected < 3; rejected++) {
-      await tester.tap(find.text('Cầu hòa ($rejected/3)'));
+      // Số lần bị từ chối chỉ hiện lên sau lần đầu.
+      await tester.tap(
+        find.text(rejected == 0 ? 'Cầu hòa' : 'Cầu hòa ($rejected/3)'),
+      );
       await tester.pump();
       expect(find.text('Đang chờ đối thủ trả lời cầu hòa…'), findsOneWidget);
       await tester.pump(const Duration(milliseconds: 500));
     }
-    expect(find.text('Máy thắng'), findsOneWidget);
-    expect(find.text('Bạn thua vì bị từ chối cầu hòa 3 lần'), findsOneWidget);
+    expect(find.text('BẠN THUA VÌ BỊ TỪ CHỐI CẦU HÒA 3 LẦN'), findsOneWidget);
+    expect(find.text('Chơi ván mới'), findsOneWidget);
   });
 
   testWidgets('choi voi may: xin thua ket thuc van', (tester) async {
@@ -30,22 +33,29 @@ void main() {
     await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, 'Xin thua'));
     await tester.pump();
-    expect(find.text('Máy thắng'), findsOneWidget);
-    expect(find.text('Bạn đã xin thua'), findsOneWidget);
+    expect(find.text('BẠN ĐÃ XIN THUA'), findsOneWidget);
   });
 
   testWidgets('chon Den thi may cam Do tu di nuoc dau', (tester) async {
     await tester.pumpWidget(
       const MaterialApp(home: XiangqiLocalGameScreen()),
     );
-    await tester.tap(find.byTooltip('Chọn quân của bạn'));
+    await tester.tap(find.byTooltip('Tuỳ chọn ván đấu'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Đen - đi sau').last);
+    await tester.tap(find.text('Cầm Đen - đi sau').last);
+    // Khung hình đầu chạy postFrameCallback gọi lượt máy, khung hình sau mới
+    // là cái `endOfFrame` đang đợi.
     await tester.pump();
     await tester.pump();
+
+    // Máy nghĩ ở isolate nền nên cần đồng hồ thật; đồng hồ giả của
+    // testWidgets không nhích được một isolate khác.
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(seconds: 2)),
+    );
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
-    expect(find.text('Lượt của bạn'), findsOneWidget);
+    expect(find.text('• LƯỢT CỦA BẠN · ĐEN'), findsOneWidget);
   });
 
   testWidgets('tao phong co tuong chon Den va luu dung game option',

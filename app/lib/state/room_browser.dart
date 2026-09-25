@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:platform_core/platform_core.dart';
 
-import '../transport/lan/lan_discovery.dart';
+import 'network_providers.dart';
 import '../transport/lan/local_network_permission.dart';
 
 /// Nhung gi man hinh tim phong can biet.
@@ -27,7 +27,7 @@ class BrowserState {
 /// `autoDispose` de viec quet dung ngay khi roi man hinh - quang ba va lang
 /// nghe mDNS chay nen la mot cach ro pin rat de bo quen.
 class RoomBrowser extends AutoDisposeFamilyAsyncNotifier<BrowserState, GameId> {
-  LanDiscovery? _discovery;
+  DiscoveryService? _discovery;
   StreamSubscription<List<DiscoveredRoom>>? _sub;
 
   @override
@@ -41,13 +41,16 @@ class RoomBrowser extends AutoDisposeFamilyAsyncNotifier<BrowserState, GameId> {
       return const BrowserState(scanning: false);
     }
 
-    const permission = LocalNetworkPermission();
-    final access = await permission.request();
+    // Lấy qua provider chứ không tự dựng: đây đúng là chỗ mà
+    // `network_providers.dart` tồn tại để phục vụ. Tự dựng thì màn tìm phòng
+    // luôn kéo theo plugin thật, nên không test được và không dựng ảnh được —
+    // nó là màn duy nhất trong app còn sót lại như vậy.
+    final access = await ref.read(localNetworkPermissionProvider).request();
     if (access != LocalNetworkAccess.granted) {
       return BrowserState(permission: access);
     }
 
-    final discovery = LanDiscovery();
+    final discovery = ref.read(discoveryFactoryProvider)();
     _discovery = discovery;
 
     _sub = discovery.rooms.listen((rooms) {

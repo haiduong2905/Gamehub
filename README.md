@@ -25,30 +25,43 @@ packages/platform_core/     PURE DART — không Flutter, không dart:io
   game/                     GameDefinition, GameRegistry, GameView
   transport/                Transport/Discovery trừu tượng + LoopbackTransport
 
-packages/game_audio/        Âm thanh dùng chung cho MỌI game
+packages/game_audio/        Âm thanh + khung màn ván đấu dùng chung cho MỌI game
   AudioSettings             bật/tắt hiệu ứng, bật/tắt nhạc nền, âm lượng
   GameAudioScope            đưa cài đặt xuống cả cây widget
   GameSoundPlayer           phát tiếng ngắn, tôn trọng cài đặt
   GameMusic                 nhạc nền chạy khi widget còn trên màn hình
   GameAudioButton           nút loa đặt trong AppBar màn ván đấu
-  bin/generate_music.dart   sinh assets/music/ambient.wav
+  gameAppBar/GameBarButton  thanh tiêu đề màn ván đấu, dùng chung app lẫn game
+  GamePlayerCard            thẻ người chơi: tên, phe, đồng hồ, tỉ số
+  GameStatusLine            dải "• LƯỢT CỦA BẠN" trên bàn cờ
+  GameActionButton          nút trong hàng nút dưới bàn cờ
+  GameColors/GameMotion     bảng màu và nhịp chuyển động dùng chung
+  bin/generate_music.dart   sinh assets/music/ambient.mp3
 
 packages/game_tictactoe/    Cờ caro: src/logic/ (pure Dart) + src/ui/ (Flutter)
   src/logic/*_ai.dart       Máy đánh: tìm kiếm alpha-beta có hạn giờ
   assets/sounds/            Tiếng bút, sinh bằng bin/generate_sounds.dart
   bin/benchmark_ai.dart     Đo tốc độ và thang độ khó của máy
+  tool/render_preview*      Dựng ảnh PNG hai màn ván đấu để soi bố cục
+
+packages/game_xiangqi/      Cờ tướng: luật, máy đánh, bàn cờ, thẻ người chơi
+  tool/render_preview*      Dựng ảnh PNG hai màn ván đấu để soi bố cục
 
 app/                        Flutter app
   lib/transport/lan/        WebSocket + bonsoir + chọn IP + quyền mạng
   lib/state/                Riverpod (gồm state/audio.dart: lưu cài đặt âm thanh)
   lib/ui/                   Màn hình
+  lib/ui/app_ui.dart        Hộp thoại, nút lớn, nhãn mục, khung trang mực nho
+  assets/images/            Icon app, ảnh nền tranh thuỷ mặc, tấm biển nhãn mục
+  tool/render_preview*      Dựng ảnh PNG các màn của app để soi bố cục
+  tool/shoot_web.dart       Chụp app chạy thật trong Chrome ở 390x844 @3x
 ```
 
 Chiều phụ thuộc — **có test tự động canh giữ**:
 
 ```
 platform_core  →  (không phụ thuộc gì)
-game_audio     →  flutter + audioplayers
+game_audio     →  flutter + audioplayers + platform_core
 game_*         →  platform_core, game_audio
 app            →  tất cả
 ```
@@ -57,6 +70,11 @@ app            →  tất cả
 cần đọc**, mà hai bên không được biết nhau: game không phụ thuộc vào `app`,
 còn `platform_core` là pure Dart nên không chứa được `Widget` hay plugin.
 `app` sở hữu việc **lưu** cài đặt; package chỉ giữ giá trị đang dùng.
+
+Khung màn ván đấu — thanh tiêu đề, thẻ người chơi, dải trạng thái, hàng nút —
+cũng nằm ở đó, vì đúng một lý do: **mọi game đều cần đúng những thứ ấy**. Để
+mỗi game tự vẽ thì hai màn ván đấu sẽ trôi khác nhau, và người chơi đi từ game
+này sang game kia sẽ thấy hai app.
 
 ---
 
@@ -186,6 +204,13 @@ Cách lặp nhanh nhất khi phát triển: chạy **một bản Windows làm ch
 | Broadcast **full state** mỗi lượt | Turn-based nên chi phí không đáng kể, đổi lại loại bỏ hoàn toàn khả năng desync. |
 | Phát hiện mất kết nối bằng `WebSocket.pingInterval` | `dart:io` đã tự ping/pong và đóng socket khi không có phản hồi — đúng thứ bắt được half-open lúc ai đó rớt Wi-Fi. Timer tự viết 3 giây vừa tốn pin vừa bị Doze xử lý. |
 | `AppLifecycleState.paused` **không** rời phòng | `paused` bắn ra cả khi kéo thanh thông báo hay có cuộc gọi đến. Đá người chơi ra vì việc đó là sai. |
+| Mỗi người **một cặp đồng hồ riêng**, kiểu cờ vua | Một đồng hồ đếm chung cho cả bàn cờ thì nghĩ lâu là ăn vào thời gian của cả hai, và hết giờ thì không quy được cho ai. Đồng hồ chỉ chạy khi tới lượt chính chủ; ai tiêu hết phần mình thì người đó thua. |
+| Tỉ số cả loạt ván do **host cộng và phát xuống** | Client tự đếm thì người vào phòng giữa chừng, hoặc mất kết nối rồi quay lại, sẽ đếm thiếu — và hai máy hiện hai tỉ số khác nhau thì không biết cái nào đúng. Ván bỏ dở không tính cho ai; hoà không cộng cho bên nào. Màn chơi với máy dùng chính kiểu `SeriesScore` đó, nên bàn cờ chỉ có một đường code vẽ tỉ số. |
+| Mọi khối quanh bàn cờ **cao cố định** | `if (x) Widget()` trong `Column` làm cả trang nhảy đúng lúc trạng thái đổi — bắt quân đầu tiên, bấm ván mới, ván kết thúc. Chỗ trống trông thừa hơn hẳn một cú nhảy. |
+| Thời lượng animation gom vào `GameMotion` | Thứ làm giao diện trông rời rạc không phải là thiếu animation, mà là mỗi chỗ một tốc độ khác nhau. |
+| Máy đánh chạy ở **isolate nền** (`compute`) | Tìm kiếm chạy đồng bộ: mức Khó của cờ caro chiếm luồng giao diện 450ms, mức Chuyên gia 700ms. Trong chừng ấy thời gian không khung hình nào được vẽ, nên quân người chơi vừa đánh cũng phải đợi máy nghĩ xong mới hiện ra. Trước lượt máy thì `await endOfFrame` chứ không `Future.delayed` một nhịp — timer và vsync là hai đồng hồ rời nhau. |
+| Mỗi game tự vẽ dải trạng thái của mình | Màn phòng của `app` không biết game nào đang chạy nên không biết chữ nào đúng — "Lượt của bạn" hợp với cờ caro, còn cờ tướng còn phải nói tới cầu hòa và hết giờ. |
+| Đồng hồ gửi **số giây còn lại**, không gửi mốc thời gian | Mốc tuyệt đối buộc máy nhận trừ theo đồng hồ của nó; hai điện thoại lệch giờ bao nhiêu thì số đếm ngược lệch bấy nhiêu. Và phải là số *còn lại* chứ không phải giới hạn đã đặt, vì host gửi lại state ngay giữa lượt. Chi tiết trong [game-protocol.md](docs/architecture/game-protocol.md). |
 | TXT record chỉ chứa dữ liệu bất biến | `NsdManager` trước API 34 không sửa được TXT; muốn đổi phải huỷ rồi đăng ký lại, phòng sẽ nhấp nháy mà số liệu vẫn sai vì mDNS cache theo TTL. |
 | Chỉ xin `NEARBY_WIFI_DEVICES` từ **Android 13 (API 33)** trở lên | Dưới mốc đó quyền này chưa tồn tại, mà `permission_handler` lại trả về `denied` chứ không phải `granted` — máy Android 12 sẽ tự chặn chính mình và người dùng vào Cài đặt cũng không tìm thấy mục nào để bật. Số phiên bản đọc bằng `device_info_plus`. |
 
